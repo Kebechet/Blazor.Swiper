@@ -3,9 +3,16 @@ using Microsoft.JSInterop;
 
 namespace Kebechet.Blazor.Swiper;
 
+/// <summary>
+/// Renders a Swiper slider. Place <see cref="SwiperSlide"/> components in its content, and
+/// capture it with <c>@ref</c> to drive it from C# (<see cref="SlideTo"/>, <see cref="Update"/>, ...).
+/// </summary>
 public partial class Swiper : IAsyncDisposable
 {
+    /// <summary>Parameters passed to the underlying Swiper on init.</summary>
     [Parameter] public SwiperOptions Options { get; set; } = new();
+
+    /// <summary>The slides, i.e. a set of <see cref="SwiperSlide"/> components.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     /// <summary>Raised on slide change, with the new active slide index.</summary>
@@ -23,6 +30,7 @@ public partial class Swiper : IAsyncDisposable
     /// <summary>Raised when a slide transition finishes, i.e. the slider has settled at rest.</summary>
     [Parameter] public EventCallback OnTransitionEnd { get; set; }
 
+    /// <summary>Attributes forwarded to the underlying <c>&lt;swiper-container&gt;</c> element.</summary>
     [Parameter(CaptureUnmatchedValues = true)]
     public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -35,6 +43,7 @@ public partial class Swiper : IAsyncDisposable
     private IJSObjectReference? _module;
     private DotNetObjectReference<Swiper>? _selfReference;
 
+    /// <inheritdoc />
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
@@ -102,6 +111,7 @@ public partial class Swiper : IAsyncDisposable
         }
     }
 
+    /// <summary>Interop callback for Swiper's <c>slidechange</c> event. Not intended to be called from your code.</summary>
     [JSInvokable]
     public Task OnSlideChangeInternal(int activeIndex)
     {
@@ -109,24 +119,28 @@ public partial class Swiper : IAsyncDisposable
         return OnSlideChange.InvokeAsync(activeIndex);
     }
 
+    /// <summary>Interop callback for Swiper's <c>reachend</c> event. Not intended to be called from your code.</summary>
     [JSInvokable]
     public Task OnReachEndInternal()
     {
         return OnReachEnd.InvokeAsync();
     }
 
+    /// <summary>Interop callback for Swiper's <c>reachbeginning</c> event. Not intended to be called from your code.</summary>
     [JSInvokable]
     public Task OnReachBeginningInternal()
     {
         return OnReachBeginning.InvokeAsync();
     }
 
+    /// <summary>Interop callback for Swiper's <c>transitionend</c> event. Not intended to be called from your code.</summary>
     [JSInvokable]
     public Task OnTransitionEndInternal()
     {
         return OnTransitionEnd.InvokeAsync();
     }
 
+    /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
         try

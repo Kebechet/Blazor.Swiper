@@ -59,6 +59,9 @@ public sealed class SwiperOptions
 /// <summary>Values for <see cref="SwiperOptions.Direction"/>.</summary>
 public static class SwiperDirection
 {
+    /// <summary>Slides move left/right.</summary>
     public const string Horizontal = "horizontal";
+
+    /// <summary>Slides move up/down. Needs an explicit height on the <c>Swiper</c> element.</summary>
     public const string Vertical = "vertical";
 }
