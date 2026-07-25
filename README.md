@@ -58,10 +58,20 @@ Any attribute you put on `<Swiper>` or `<SwiperSlide>` that isn't a parameter is
 | `Keyboard` | `bool` | `false` | Enable keyboard control. |
 | `Mousewheel` | `bool` | `false` | Enable mousewheel control. |
 | `Observer` | `bool` | `false` | Swiper's MutationObserver, which auto-calls `update()` on any DOM change in the container. See below. |
+| `CssMode` | `bool` | `false` | Use the browser's native CSS Scroll Snap API instead of JS transforms. See below. |
 
 ### Observer is off by default
 
 Swiper Element turns its `MutationObserver` on by default; this wrapper turns it off. With a framework re-rendering slide content - and especially with `AutoHeight`, whose height writes are themselves DOM mutations - it drives a costly update/height feedback loop. Call `Update()` explicitly instead when the slide collection changes, or set `Observer = true` if you want Swiper's behaviour back.
+
+### CssMode trades features for smoothness
+
+`CssMode = true` moves the slider onto the browser's native CSS Scroll Snap API, so scrolling runs on the compositor thread - dramatically smoother for heavy or tall slides. In exchange (these are Swiper's own limitations, not the wrapper's):
+
+- mouse-drag does not work - wheel, trackpad and touch still do, exactly like a native scroller
+- `Speed` is ignored
+- transition start/end events do not fire, so use `OnSlideChange` rather than `OnTransitionEnd`
+- it is **not** compatible with `Loop`
 
 ## Events
 

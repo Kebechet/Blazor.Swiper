@@ -54,6 +54,23 @@ public sealed class SwiperOptions
 
     /// <summary>Enable mousewheel control.</summary>
     public bool Mousewheel { get; set; }
+
+    /// <summary>
+    /// Swiper's built-in MutationObserver that auto-calls <c>update()</c> on any DOM change in the
+    /// container. Off by default (Swiper Element itself defaults it on): with a framework re-rendering
+    /// slide content - and especially with <see cref="AutoHeight"/>, whose height writes are themselves
+    /// DOM mutations - it drives a costly update/height feedback loop. Call update explicitly instead.
+    /// </summary>
+    public bool Observer { get; set; }
+
+    /// <summary>
+    /// Use the browser's native CSS Scroll Snap API instead of JS transforms. Moves the slide on the
+    /// compositor thread, which is dramatically smoother for heavy/tall slides. Trade-offs (per Swiper):
+    /// mouse-drag does not work (wheel/trackpad/touch still do, exactly like a native scroller),
+    /// <see cref="Speed"/> is ignored, transition start/end events do not fire (use
+    /// <see cref="Swiper.OnSlideChange"/>), and it is NOT compatible with <see cref="Loop"/>.
+    /// </summary>
+    public bool CssMode { get; set; }
 }
 
 /// <summary>Values for <see cref="SwiperOptions.Direction"/>.</summary>
