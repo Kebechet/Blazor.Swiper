@@ -1,0 +1,12 @@
+@namespace Kebechet.Blazor.Swiper
+
+<swiper-slide @attributes="AdditionalAttributes">
+    @ChildContent
+</swiper-slide>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
+}

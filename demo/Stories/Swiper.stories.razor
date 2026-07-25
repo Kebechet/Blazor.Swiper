@@ -1,0 +1,174 @@
+@attribute [Stories("Components/Swiper")]
+
+<Stories TComponent="Swiper">
+
+    <Story Name="Default">
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_defaultOptions">
+                    @Slides()
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Space between">
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_spaceBetweenOptions">
+                    @Slides()
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Multiple slides per view">
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_multiPerViewOptions">
+                    @Slides()
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Vertical direction">
+        <Template>
+            @* A vertical Swiper needs an explicit height on the swiper-container itself,
+               not just on a wrapper - otherwise it collapses to content height. *@
+            <div style="width: 420px; height: 240px;">
+                <Swiper Options="_verticalOptions" style="height: 100%;">
+                    @Slides()
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Loop">
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_loopOptions">
+                    @Slides()
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Pagination">
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_paginationOptions">
+                    @Slides()
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Navigation arrows">
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_navigationOptions">
+                    @Slides()
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Forward only">
+        <Template>
+            <div style="width: 420px;">
+                <p style="margin-bottom:.5rem;font:13px system-ui;color:#666">
+                    <code>AllowSlidePrev = false</code> locks back-swipe; the slider only moves forward.
+                </p>
+                <Swiper Options="_forwardOnlyOptions">
+                    @Slides()
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Programmatic control">
+        <Template>
+            <div style="width: 420px;">
+                <Swiper @ref="_programmaticSwiper" Options="_defaultOptions" OnSlideChange="index => _activeIndex = index">
+                    @Slides()
+                </Swiper>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
+                    <button class="demo-button" @onclick="() => _programmaticSwiper!.SlidePrev()">Prev</button>
+                    <button class="demo-button" @onclick="() => _programmaticSwiper!.SlideNext()">Next</button>
+                    <button class="demo-button" @onclick="() => _programmaticSwiper!.SlideTo(0)">First</button>
+                    <span style="font:13px system-ui;color:#666">active index: @_activeIndex</span>
+                </div>
+            </div>
+        </Template>
+    </Story>
+
+</Stories>
+
+@code {
+    private Swiper? _programmaticSwiper;
+    private int _activeIndex;
+
+    private readonly SwiperOptions _defaultOptions = new();
+
+    private readonly SwiperOptions _spaceBetweenOptions = new()
+    {
+        SpaceBetween = 24,
+    };
+
+    private readonly SwiperOptions _multiPerViewOptions = new()
+    {
+        SlidesPerView = 2,
+        SpaceBetween = 16,
+    };
+
+    private readonly SwiperOptions _verticalOptions = new()
+    {
+        Direction = SwiperDirection.Vertical,
+        SpaceBetween = 16,
+    };
+
+    private readonly SwiperOptions _loopOptions = new()
+    {
+        Loop = true,
+        SpaceBetween = 16,
+    };
+
+    private readonly SwiperOptions _paginationOptions = new()
+    {
+        Pagination = true,
+        SpaceBetween = 16,
+    };
+
+    private readonly SwiperOptions _navigationOptions = new()
+    {
+        Navigation = true,
+        SpaceBetween = 16,
+    };
+
+    private readonly SwiperOptions _forwardOnlyOptions = new()
+    {
+        AllowSlidePrev = false,
+        SpaceBetween = 16,
+    };
+
+    private readonly SlideModel[] _slides =
+    [
+        new("Slide 1", "#0ea5a4"),
+        new("Slide 2", "#6366f1"),
+        new("Slide 3", "#f59e0b"),
+        new("Slide 4", "#ef4444"),
+    ];
+
+    private RenderFragment Slides() => __builder =>
+    {
+        foreach (var slide in _slides)
+        {
+            <SwiperSlide>
+                <div class="demo-slide" style="background:@slide.Color">@slide.Label</div>
+            </SwiperSlide>
+        }
+    };
+
+    private sealed record SlideModel(string Label, string Color);
+}

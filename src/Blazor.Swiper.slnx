@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Blazor.Swiper\Blazor.Swiper.csproj" />
+  <Folder Name="/tests/">
+    <Project Path="..\tests\Blazor.Swiper.Tests\Blazor.Swiper.Tests.csproj" />
+  </Folder>
+</Solution>

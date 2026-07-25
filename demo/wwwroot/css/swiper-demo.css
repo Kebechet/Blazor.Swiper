@@ -1,0 +1,25 @@
+.demo-slide {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    border-radius: 12px;
+    color: #fff;
+    font: 600 20px system-ui, sans-serif;
+}
+
+.demo-button {
+    margin-top: 12px;
+    padding: 8px 20px;
+    border: none;
+    border-radius: 8px;
+    background: #0ea5a4;
+    color: #fff;
+    font: 600 14px system-ui, sans-serif;
+    cursor: pointer;
+}
+
+.demo-button:disabled {
+    background: #cbd5e1;
+    cursor: default;
+}
