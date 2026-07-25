@@ -5,10 +5,13 @@
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Kebechet.Blazor.Swiper)](https://www.nuget.org/packages/Kebechet.Blazor.Swiper/)
 [![Build](https://github.com/Kebechet/Blazor.Swiper/actions/workflows/build.yml/badge.svg)](https://github.com/Kebechet/Blazor.Swiper/actions/workflows/build.yml)
 [![codecov](https://codecov.io/gh/Kebechet/Blazor.Swiper/graph/badge.svg)](https://codecov.io/gh/Kebechet/Blazor.Swiper)
+[![Storybook](https://img.shields.io/badge/storybook-live%20demo-ff4785)](https://kebechet.github.io/Blazor.Swiper/)
 ![Last updated](https://img.shields.io/github/last-commit/Kebechet/Blazor.Swiper/main?label=last%20updated)
 [![Twitter](https://img.shields.io/twitter/url/https/twitter.com/samuel_sidor.svg?style=social&label=Follow%20samuel_sidor)](https://x.com/samuel_sidor)
 
 A Blazor wrapper for [Swiper](https://swiperjs.com), built on the framework-agnostic [Swiper Element](https://swiperjs.com/element) web component. The Swiper bundle is shipped inside the package and auto-registered on startup - no npm build step and no manual `<script>` tags.
+
+**[Live storybook](https://kebechet.github.io/Blazor.Swiper/)** - interactive stories for every option.
 
 ## Installation
 
