@@ -26,7 +26,7 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public void Renders_swiper_container_uninitialized()
+    public void Render_Default_RendersUninitializedSwiperContainer()
     {
         // Arrange & Act
         var cut = _context.RenderComponent<Swiper>();
@@ -37,7 +37,7 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public void Renders_child_slides_as_swiper_slide_elements()
+    public void Render_WithChildSlides_RendersSwiperSlideElements()
     {
         // Arrange & Act
         var cut = _context.RenderComponent<Swiper>(parameters => parameters
@@ -49,7 +49,7 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public void Initializes_with_the_supplied_options_on_first_render()
+    public void Render_FirstRender_InitializesWithSuppliedOptions()
     {
         // Arrange
         var options = new SwiperOptions { SlidesPerView = 2 };
@@ -63,7 +63,7 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public async Task SlideNext_invokes_the_interop_method()
+    public async Task SlideNext_WhenCalled_InvokesInteropMethod()
     {
         // Arrange
         var cut = _context.RenderComponent<Swiper>();
@@ -76,7 +76,7 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public async Task SlideTo_passes_the_index_and_speed()
+    public async Task SlideTo_WithIndexAndSpeed_PassesBothToInterop()
     {
         // Arrange
         var cut = _context.RenderComponent<Swiper>();
@@ -91,7 +91,7 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public async Task SetAllowSlideNext_forwards_the_flag()
+    public async Task SetAllowSlideNext_WithFlag_ForwardsFlagToInterop()
     {
         // Arrange
         var cut = _context.RenderComponent<Swiper>();
@@ -105,7 +105,7 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public async Task OnSlideChangeInternal_updates_ActiveIndex_and_raises_the_callback()
+    public async Task OnSlideChangeInternal_CodeDrivenChange_UpdatesActiveIndexAndRaisesOnSlideChange()
     {
         // Arrange
         var reportedIndex = -1;
@@ -113,7 +113,7 @@ public sealed class SwiperTests : IDisposable
             .Add(x => x.OnSlideChange, EventCallback.Factory.Create<int>(this, index => reportedIndex = index)));
 
         // Act
-        await cut.InvokeAsync(() => cut.Instance.OnSlideChangeInternal(2));
+        await cut.InvokeAsync(() => cut.Instance.OnSlideChangeInternal(2, isUserDriven: false));
 
         // Assert
         cut.Instance.ActiveIndex.ShouldBe(2);
@@ -121,7 +121,69 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public async Task OnTransitionEndInternal_raises_the_callback()
+    public async Task OnSlideChangeInternal_UserDrivenChange_RaisesOnUserSlideChangeToo()
+    {
+        // Arrange
+        var userReportedIndexes = new List<int>();
+        var allReportedIndexes = new List<int>();
+        var cut = _context.RenderComponent<Swiper>(parameters => parameters
+            .Add(x => x.OnSlideChange, EventCallback.Factory.Create<int>(this, allReportedIndexes.Add))
+            .Add(x => x.OnUserSlideChange, EventCallback.Factory.Create<int>(this, userReportedIndexes.Add)));
+
+        // Act
+        await cut.InvokeAsync(() => cut.Instance.OnSlideChangeInternal(1, isUserDriven: false));
+        await cut.InvokeAsync(() => cut.Instance.OnSlideChangeInternal(2, isUserDriven: true));
+
+        // Assert
+        allReportedIndexes.ShouldBe([1, 2]);
+        userReportedIndexes.ShouldBe([2]);
+    }
+
+    [Fact]
+    public void Render_AfterPositioning_DropsVisibilityHidden()
+    {
+        // Arrange
+        var markupWhileInitializing = string.Empty;
+
+        // Act
+        var cut = _context.RenderComponent<Swiper>(parameters => parameters
+            .Add(x => x.OnReady, EventCallback.Factory.Create(this, () => markupWhileInitializing = "captured")));
+
+        // Assert
+        markupWhileInitializing.ShouldBe("captured");
+        cut.Markup.ShouldNotContain("visibility:hidden");
+    }
+
+    [Fact]
+    public void RenderedAttributes_BeforePositioningWithCallerStyle_AppendsVisibilityHidden()
+    {
+        // Arrange
+        var swiper = new Swiper();
+        var attributes = new Dictionary<string, object> { ["style"] = "margin-top:4px" };
+
+        // Act
+        var rendered = InvokeRenderedAttributes(swiper, attributes);
+
+        // Assert
+        rendered!["style"].ToString().ShouldBe("margin-top:4px;visibility:hidden");
+    }
+
+    private static IReadOnlyDictionary<string, object>? InvokeRenderedAttributes(
+        Swiper swiper,
+        Dictionary<string, object> attributes)
+    {
+        var attributesProperty = typeof(Swiper).GetProperty(nameof(Swiper.AdditionalAttributes))!;
+        attributesProperty.SetValue(swiper, attributes);
+
+        var renderedProperty = typeof(Swiper).GetProperty(
+            "_renderedAttributes",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+
+        return (IReadOnlyDictionary<string, object>?) renderedProperty.GetValue(swiper);
+    }
+
+    [Fact]
+    public async Task OnTransitionEndInternal_WhenInvoked_RaisesOnTransitionEnd()
     {
         // Arrange
         var hasSettled = false;
@@ -136,7 +198,7 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public async Task OnReachEndInternal_raises_the_callback()
+    public async Task OnReachEndInternal_WhenInvoked_RaisesOnReachEnd()
     {
         // Arrange
         var hasReachedEnd = false;
@@ -151,7 +213,7 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public void OnReady_is_raised_after_initialization()
+    public void Render_AfterInitialization_RaisesOnReady()
     {
         // Arrange
         var isReady = false;
@@ -165,7 +227,7 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public async Task Disposing_destroys_the_underlying_swiper()
+    public async Task DisposeAsync_WhenDisposed_DestroysUnderlyingSwiper()
     {
         // Arrange
         var cut = _context.RenderComponent<Swiper>();

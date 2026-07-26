@@ -20,8 +20,9 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageIcon>icon.png</PackageIcon>
     <PackageTags>blazor;swiper;carousel;slider;slideshow;touch;swipe;webcomponent</PackageTags>
-    <Version>14.0.6</Version>
-    <PackageReleaseNotes>Initial release wrapping Swiper 14.0.6 via the Swiper Element web component.</PackageReleaseNotes>
+    <!-- First three parts track the bundled Swiper release; the fourth is this wrapper's own revision. -->
+    <Version>14.0.6.1</Version>
+    <PackageReleaseNotes>Adds OnUserSlideChange and OnSliderFirstMove, so a slide change the user dragged can be told apart from a code-driven one - by index alone they are identical, and Loop re-announces the slide it left after a programmatic move finishes. Adds SwiperOptions.ResizeObserver and SwiperOptions.A11y (ScrollOnFocus): Swiper's resize and focus handling both end by re-anchoring onto the index they hold, deferred by a frame, which undoes a host move made in the same interaction - set ResizeObserver false when the slides resize as a matter of course. Adds ArmAnchor and UpdateAndAnchor to keep the slider on a known slide when the host framework adds or removes slide elements itself. autoHeight now stays true after init, cssMode navigation animates instead of being cancelled by scroll-snap, and the slider is hidden until it has positioned its first slide.</PackageReleaseNotes>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>

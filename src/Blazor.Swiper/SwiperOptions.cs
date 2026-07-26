@@ -71,6 +71,31 @@ public sealed class SwiperOptions
     /// <see cref="Swiper.OnSlideChange"/>), and it is NOT compatible with <see cref="Loop"/>.
     /// </summary>
     public bool CssMode { get; set; }
+
+    /// <summary>Accessibility behaviour. Null = Swiper's defaults (a11y on, including scroll-on-focus).</summary>
+    public SwiperA11yOptions? A11y { get; set; }
+
+    /// <summary>
+    /// Whether Swiper watches its own element for size changes and re-measures. Swiper's resize handling
+    /// finishes by re-anchoring onto the CURRENT index, which is destructive when a programmatic move is
+    /// already in flight: the re-anchor is scheduled with the pre-move index and lands after it, undoing it.
+    /// Set false when the pages resize as a matter of course (live content) and the host drives the position.
+    /// Window resizes still re-measure; only the per-element observer is dropped.
+    /// </summary>
+    public bool ResizeObserver { get; set; } = true;
+}
+
+/// <summary>Accessibility parameters, i.e. Swiper's <c>a11y</c> module.</summary>
+public sealed class SwiperA11yOptions
+{
+    /// <summary>
+    /// Whether focusing an element inside a non-active slide slides that slide into view. Swiper schedules
+    /// that correction through <c>requestAnimationFrame</c>, so with a host framework that moves the slider
+    /// in response to the same interaction (e.g. a button inside a slide advancing the pager), the
+    /// correction lands AFTER the intended move and pulls the slider back to the slide holding the button.
+    /// Set false when the host drives the position itself.
+    /// </summary>
+    public bool ScrollOnFocus { get; set; } = true;
 }
 
 /// <summary>Values for <see cref="SwiperOptions.Direction"/>.</summary>

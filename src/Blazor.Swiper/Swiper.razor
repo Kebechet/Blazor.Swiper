@@ -1,6 +1,6 @@
 @namespace Kebechet.Blazor.Swiper
 @inject IJSRuntime JS
 
-<swiper-container @ref="_element" init="false" @attributes="AdditionalAttributes">
+<swiper-container @ref="_element" init="false" @attributes="_renderedAttributes">
     @ChildContent
 </swiper-container>
