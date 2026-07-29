@@ -60,7 +60,7 @@
                     @Slides()
                 </Swiper>
                 <button class="demo-button" data-testid="loop-to-third" @onclick="() => _loopSwiper!.SlideTo(2)">To third slide</button>
-                <SwiperState Log="_loopLog" TestId="loop-state" />
+                <SwiperState Json="@_loopLog.ToJson()" TestId="loop-state" />
             </div>
         </Template>
     </Story>
@@ -114,7 +114,7 @@
                     <button class="demo-button" data-testid="slide-next" @onclick="() => _programmaticSwiper!.SlideNext()">Next</button>
                     <button class="demo-button" data-testid="slide-first" @onclick="() => _programmaticSwiper!.SlideTo(0)">First</button>
                 </div>
-                <SwiperState Log="_programmaticLog" TestId="programmatic-state" />
+                <SwiperState Json="@_programmaticLog.ToJson()" TestId="programmatic-state" />
             </div>
         </Template>
     </Story>
@@ -141,7 +141,7 @@
                         data-testid="untyped-swiper">
                     @Slides()
                 </Swiper>
-                <SwiperState Log="_untypedLog" TestId="untyped-state" />
+                <SwiperState Json="@_untypedLog.ToJson()" TestId="untyped-state" />
             </div>
         </Template>
     </Story>
@@ -170,7 +170,7 @@
                     @Slides()
                 </Swiper>
                 <button class="demo-button" data-testid="move-by-code" @onclick="() => _distinctionSwiper!.SlideNext()">Move by code</button>
-                <SwiperState Log="_distinctionLog" TestId="distinction-state" />
+                <SwiperState Json="@_distinctionLog.ToJson()" TestId="distinction-state" />
             </div>
         </Template>
     </Story>

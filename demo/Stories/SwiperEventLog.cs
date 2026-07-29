@@ -11,7 +11,7 @@ namespace Blazor.Swiper.Demo.Stories;
 /// tallies shows that. It also makes the distinction assertable by the E2E suite, which is the
 /// only place a real swipe can be produced at all.
 /// </remarks>
-public sealed class SwiperEventLog
+internal sealed class SwiperEventLog
 {
     public int ActiveIndex { get; private set; }
     public int SlideChanges { get; private set; }

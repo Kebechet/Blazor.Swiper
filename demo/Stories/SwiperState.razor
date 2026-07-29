@@ -1,11 +1,11 @@
 <section class="demo-model" aria-label="Live Swiper state">
     <h3>Live state</h3>
-    <pre data-testid="@TestId">@Log.ToJson()</pre>
+    <pre data-testid="@TestId">@Json</pre>
 </section>
 
 @code {
     [Parameter, EditorRequired]
-    public SwiperEventLog Log { get; set; } = new();
+    public string Json { get; set; } = string.Empty;
 
     [Parameter, EditorRequired]
     public string TestId { get; set; } = string.Empty;
