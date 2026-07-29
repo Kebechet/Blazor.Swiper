@@ -47,9 +47,20 @@
     <Story Name="Loop">
         <Template>
             <div style="width: 420px;">
-                <Swiper Options="_loopOptions">
+                <p class="demo-hint">
+                    In loop mode Swiper duplicates slides, so its internal index counts positions that do not
+                    exist in your collection. The reported <code>activeIndex</code> is the <em>logical</em> one,
+                    which is why <code>SlideTo(2)</code> below settles on - and reports - slide 3.
+                </p>
+                <Swiper @ref="_loopSwiper"
+                        Options="_loopOptions"
+                        OnSlideChange="OnLoopSlideChange"
+                        OnReady="OnLoopReady"
+                        data-testid="loop-swiper">
                     @Slides()
                 </Swiper>
+                <button class="demo-button" data-testid="loop-to-third" @onclick="() => _loopSwiper!.SlideTo(2)">To third slide</button>
+                <SwiperState Log="_loopLog" TestId="loop-state" />
             </div>
         </Template>
     </Story>
@@ -90,15 +101,76 @@
     <Story Name="Programmatic control">
         <Template>
             <div style="width: 420px;">
-                <Swiper @ref="_programmaticSwiper" Options="_defaultOptions" OnSlideChange="index => _activeIndex = index">
+                <Swiper @ref="_programmaticSwiper"
+                        Options="_defaultOptions"
+                        OnSlideChange="OnProgrammaticSlideChange"
+                        OnUserSlideChange="OnProgrammaticUserSlideChange"
+                        OnReady="OnProgrammaticReady"
+                        data-testid="programmatic-swiper">
                     @Slides()
                 </Swiper>
                 <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
-                    <button class="demo-button" @onclick="() => _programmaticSwiper!.SlidePrev()">Prev</button>
-                    <button class="demo-button" @onclick="() => _programmaticSwiper!.SlideNext()">Next</button>
-                    <button class="demo-button" @onclick="() => _programmaticSwiper!.SlideTo(0)">First</button>
-                    <span style="font:13px system-ui;color:#666">active index: @_activeIndex</span>
+                    <button class="demo-button" data-testid="slide-prev" @onclick="() => _programmaticSwiper!.SlidePrev()">Prev</button>
+                    <button class="demo-button" data-testid="slide-next" @onclick="() => _programmaticSwiper!.SlideNext()">Next</button>
+                    <button class="demo-button" data-testid="slide-first" @onclick="() => _programmaticSwiper!.SlideTo(0)">First</button>
                 </div>
+                <SwiperState Log="_programmaticLog" TestId="programmatic-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Untyped parameters">
+        <Description>
+            <code>SwiperOptions</code> is a typed subset of Swiper's parameters. Anything it does not cover
+            can still be set as a plain attribute on <code>&lt;Swiper&gt;</code>: attributes that do not match
+            a component parameter are forwarded to the underlying <code>&lt;swiper-container&gt;</code>, which
+            reads them as parameters when it initializes. Typed options and attributes can be mixed freely.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">
+                    <code>SlidesPerView</code> comes from the typed <code>Options</code>, while
+                    <code>slides-per-group</code> and <code>grab-cursor</code> are plain attributes - neither
+                    exists on <code>SwiperOptions</code>. The slider shows two slides and advances two at a time.
+                </p>
+                <Swiper Options="_untypedOptions"
+                        OnSlideChange="OnUntypedSlideChange"
+                        OnReady="OnUntypedReady"
+                        slides-per-group="2"
+                        grab-cursor="true"
+                        data-testid="untyped-swiper">
+                    @Slides()
+                </Swiper>
+                <SwiperState Log="_untypedLog" TestId="untyped-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="User vs code-driven changes">
+        <Description>
+            <code>OnSlideChange</code> reports every change, whoever caused it. <code>OnUserSlideChange</code>
+            reports only the ones the user dragged. By index alone the two are indistinguishable - and in
+            <code>Loop</code> mode a programmatic move is followed by an echo announcing the slide it left -
+            so a host that reacts to a change by updating its own state needs the narrower callback to avoid
+            feeding its own move back into itself.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">
+                    Swipe the slider: <code>slideChanges</code> and <code>userSlideChanges</code> both climb.
+                    Press <em>Move by code</em>: only <code>slideChanges</code> moves. A plain tap on a slide
+                    raises neither, so a button inside a slide is never mistaken for a swipe.
+                </p>
+                <Swiper @ref="_distinctionSwiper"
+                        Options="_defaultOptions"
+                        OnSlideChange="OnDistinctionSlideChange"
+                        OnUserSlideChange="OnDistinctionUserSlideChange"
+                        OnReady="OnDistinctionReady"
+                        data-testid="distinction-swiper">
+                    @Slides()
+                </Swiper>
+                <button class="demo-button" data-testid="move-by-code" @onclick="() => _distinctionSwiper!.SlideNext()">Move by code</button>
+                <SwiperState Log="_distinctionLog" TestId="distinction-state" />
             </div>
         </Template>
     </Story>
@@ -107,7 +179,79 @@
 
 @code {
     private Swiper? _programmaticSwiper;
-    private int _activeIndex;
+    private Swiper? _distinctionSwiper;
+    private Swiper? _loopSwiper;
+
+    private readonly SwiperEventLog _programmaticLog = new();
+    private readonly SwiperEventLog _distinctionLog = new();
+    private readonly SwiperEventLog _loopLog = new();
+    private readonly SwiperEventLog _untypedLog = new();
+
+    private readonly SwiperOptions _untypedOptions = new()
+    {
+        SlidesPerView = 2,
+        SpaceBetween = 16,
+    };
+
+    private void OnProgrammaticSlideChange(int index)
+    {
+        _programmaticLog.RecordSlideChange(index);
+        StateHasChanged();
+    }
+
+    private void OnProgrammaticUserSlideChange(int index)
+    {
+        _programmaticLog.RecordUserSlideChange(index);
+        StateHasChanged();
+    }
+
+    private void OnProgrammaticReady()
+    {
+        _programmaticLog.RecordReady();
+        StateHasChanged();
+    }
+
+    private void OnDistinctionSlideChange(int index)
+    {
+        _distinctionLog.RecordSlideChange(index);
+        StateHasChanged();
+    }
+
+    private void OnDistinctionUserSlideChange(int index)
+    {
+        _distinctionLog.RecordUserSlideChange(index);
+        StateHasChanged();
+    }
+
+    private void OnDistinctionReady()
+    {
+        _distinctionLog.RecordReady();
+        StateHasChanged();
+    }
+
+    private void OnLoopSlideChange(int index)
+    {
+        _loopLog.RecordSlideChange(index);
+        StateHasChanged();
+    }
+
+    private void OnUntypedSlideChange(int index)
+    {
+        _untypedLog.RecordSlideChange(index);
+        StateHasChanged();
+    }
+
+    private void OnUntypedReady()
+    {
+        _untypedLog.RecordReady();
+        StateHasChanged();
+    }
+
+    private void OnLoopReady()
+    {
+        _loopLog.RecordReady();
+        StateHasChanged();
+    }
 
     private readonly SwiperOptions _defaultOptions = new();
 

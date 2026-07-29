@@ -483,3 +483,8 @@ $RECYCLE.BIN/
 
 # Claude Code
 .claude/settings.local.json
+
+# The stock VS template ignores *.e2e (Visual Studio trace files), and git matches ignore patterns
+# case-insensitively on Windows - which silently swallows the whole tests/Blazor.Swiper.E2E/
+# directory. Do not remove.
+!/tests/Blazor.Swiper.E2E/
