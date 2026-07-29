@@ -40,8 +40,49 @@ jobs:
       - name: Build
         run: dotnet build ${{ env.SOLUTION_PATH }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
 
+      # bUnit stubs the interop module out entirely, so without this step nothing stands behind
+      # swiper-interop.js or the decisions in swiper-policy.js. The e2e suite is deliberately not
+      # run here: it needs Chrome, and it already gates every pull request into main - which is the
+      # branch this workflow publishes from.
+      - name: Test the interop module
+        run: node --test tests/interop/*.test.mjs
+
+      - name: Test
+        run: dotnet test ${{ env.SOLUTION_PATH }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-build
+
       - name: Pack
         run: dotnet pack ${{ env.PROJECT_PATH }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --output ${{ env.OUTPUT_PATH }}
+
+      # A package that loses a static web asset publishes and installs without complaint, then loads
+      # no JavaScript at runtime. swiper-interop.js imports swiper-policy.js, so one missing module
+      # is fatal rather than degraded. Checked against wwwroot rather than a hardcoded list, so a
+      # module added later is required here without anyone having to remember this step.
+      - name: Verify the packed package
+        run: |
+          PACKAGE=$(ls ${{ env.OUTPUT_PATH }}/*.nupkg | head -1)
+          unzip -l "$PACKAGE" > packed.txt
+
+          MISSING=""
+          for MODULE in src/Blazor.Swiper/wwwroot/*.js; do
+            NAME=$(basename "$MODULE")
+            # Blazor fingerprints the initializer's filename when packing, so match on its suffix.
+            case "$NAME" in
+              *.lib.module.js) NEEDLE="lib.module.js" ;;
+              *)               NEEDLE="$NAME" ;;
+            esac
+            grep -q "staticwebassets/.*$NEEDLE" packed.txt || MISSING="$MISSING $NAME"
+          done
+
+          grep -q "build/" packed.txt || MISSING="$MISSING build/*.props"
+
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing from $(basename "$PACKAGE"):$MISSING"
+            grep -E "staticwebassets|build/" packed.txt || true
+            exit 1
+          fi
+
+          echo "Every shipped module is present in $(basename "$PACKAGE"):"
+          grep -E "staticwebassets|build/" packed.txt
 
       - name: Publish to NuGet
         run: dotnet nuget push ${{ env.OUTPUT_PATH }}/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source ${{ env.NUGET_SOURCE }} --skip-duplicate
