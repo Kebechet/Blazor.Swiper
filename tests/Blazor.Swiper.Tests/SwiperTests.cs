@@ -155,31 +155,40 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public void RenderedAttributes_BeforePositioningWithCallerStyle_AppendsVisibilityHidden()
+    public void WithHiddenVisibility_CallerSuppliedAStyle_AppendsRatherThanReplacingIt()
     {
-        // Arrange
-        var swiper = new Swiper();
+        // Arrange - the caller's style is what sizes the slider, so losing it would collapse a
+        // vertical Swiper for as long as it stays hidden.
         var attributes = new Dictionary<string, object> { ["style"] = "margin-top:4px" };
 
         // Act
-        var rendered = InvokeRenderedAttributes(swiper, attributes);
+        var rendered = Swiper.WithHiddenVisibility(attributes);
 
         // Assert
-        rendered!["style"].ToString().ShouldBe("margin-top:4px;visibility:hidden");
+        rendered["style"].ToString().ShouldBe("margin-top:4px;visibility:hidden");
     }
 
-    private static IReadOnlyDictionary<string, object>? InvokeRenderedAttributes(
-        Swiper swiper,
-        Dictionary<string, object> attributes)
+    [Fact]
+    public void WithHiddenVisibility_NoAttributesAtAll_StillHidesTheSlider()
     {
-        var attributesProperty = typeof(Swiper).GetProperty(nameof(Swiper.AdditionalAttributes))!;
-        attributesProperty.SetValue(swiper, attributes);
+        // Act
+        var rendered = Swiper.WithHiddenVisibility(null);
 
-        var renderedProperty = typeof(Swiper).GetProperty(
-            "_renderedAttributes",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        // Assert
+        rendered["style"].ToString().ShouldBe("visibility:hidden");
+    }
 
-        return (IReadOnlyDictionary<string, object>?) renderedProperty.GetValue(swiper);
+    [Fact]
+    public void WithHiddenVisibility_CallerAttributes_AreLeftUntouched()
+    {
+        // Arrange - the dictionary handed in belongs to the caller and is reused across renders.
+        var attributes = new Dictionary<string, object> { ["class"] = "pager" };
+
+        // Act
+        Swiper.WithHiddenVisibility(attributes);
+
+        // Assert
+        attributes.ShouldNotContainKey("style");
     }
 
     [Fact]

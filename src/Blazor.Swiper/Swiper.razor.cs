@@ -71,28 +71,30 @@ public partial class Swiper : IAsyncDisposable
     /// </summary>
     private bool _isPositioned;
 
-    private IReadOnlyDictionary<string, object>? _renderedAttributes
+    private IReadOnlyDictionary<string, object>? _renderedAttributes =>
+        _isPositioned ? AdditionalAttributes : WithHiddenVisibility(AdditionalAttributes);
+
+    /// <summary>
+    /// The caller's attributes with <c>visibility:hidden</c> appended to whatever style they supplied.
+    /// </summary>
+    /// <remarks>
+    /// Appended rather than replacing the style outright, because the caller's own style is what
+    /// sizes the slider - a vertical Swiper collapses to nothing without the height it carries.
+    /// </remarks>
+    internal static IReadOnlyDictionary<string, object> WithHiddenVisibility(IReadOnlyDictionary<string, object>? attributes)
     {
-        get
-        {
-            if (_isPositioned)
-            {
-                return AdditionalAttributes;
-            }
+        var rendered = attributes is null
+            ? new Dictionary<string, object>()
+            : new Dictionary<string, object>(attributes);
 
-            var attributes = AdditionalAttributes is null
-                ? new Dictionary<string, object>()
-                : new Dictionary<string, object>(AdditionalAttributes);
+        rendered.TryGetValue("style", out var callerStyle);
+        var style = callerStyle?.ToString();
 
-            attributes.TryGetValue("style", out var callerStyle);
-            var style = callerStyle?.ToString();
+        rendered["style"] = string.IsNullOrWhiteSpace(style)
+            ? HiddenStyle
+            : $"{style};{HiddenStyle}";
 
-            attributes["style"] = string.IsNullOrWhiteSpace(style)
-                ? HiddenStyle
-                : $"{style};{HiddenStyle}";
-
-            return attributes;
-        }
+        return rendered;
     }
 
     /// <inheritdoc />
