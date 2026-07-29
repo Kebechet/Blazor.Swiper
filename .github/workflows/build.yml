@@ -29,6 +29,11 @@ jobs:
     - name: Build
       run: dotnet build ${{ env.SOLUTION_PATH }} --no-restore --configuration ${{ env.BUILD_CONFIGURATION }}
 
+    # bUnit stubs the interop module out entirely, so without this step nothing but a real browser
+    # stands behind swiper-interop.js and the decision logic in swiper-policy.js.
+    - name: Test the interop module
+      run: node --test tests/interop/*.test.mjs
+
     - name: Test with coverage
       run: dotnet test ${{ env.SOLUTION_PATH }} --no-build --configuration ${{ env.BUILD_CONFIGURATION }} --collect:"XPlat Code Coverage" --results-directory ./coverage
 

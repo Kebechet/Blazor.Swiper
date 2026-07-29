@@ -5,6 +5,20 @@
 // itself: telling a user's swipe apart from a code-driven move, keeping autoHeight true after init,
 // making programmatic navigation work in cssMode, and keeping Swiper's own re-anchors from undoing a
 // move that is already in flight. Per-instance state lives on `swiper.__blazor`.
+//
+// The decisions behind those behaviours live in swiper-policy.js, which touches neither Swiper nor
+// the DOM and is covered by tests/interop/swiper-policy.test.mjs. This file is the wiring.
+
+import {
+    applicableOptions,
+    optionalSpeed,
+    navigationMode,
+    isIntentArmed,
+    shouldDisarmIntent,
+    shouldReanchor,
+    scrollPlan,
+    scrollPositionAt
+} from "./swiper-policy.js";
 
 function state(swiper) {
     swiper.__blazor ??= {
@@ -33,14 +47,9 @@ export async function initialize(element, options, dotNetRef) {
         return;
     }
 
-    // Apply options as element properties (Swiper reads them on initialize). Skip null/undefined so
-    // an unset option falls back to Swiper's own default rather than overriding it.
-    if (options) {
-        for (const [key, value] of Object.entries(options)) {
-            if (value !== null && value !== undefined) {
-                element[key] = value;
-            }
-        }
+    // Applied as element properties, which is where Swiper reads them from on initialize().
+    for (const [key, value] of applicableOptions(options)) {
+        element[key] = value;
     }
 
     // Listeners are attached AFTER initialize() on purpose. Swiper announces its starting position from
@@ -68,12 +77,8 @@ export async function initialize(element, options, dotNetRef) {
     element.addEventListener("swipertransitionend", () => {
         if (element.swiper) {
             const blazorState = state(element.swiper);
-            // Disarm only once the move is settled or abandoned - NOT on any transition end. Swiper's own
-            // re-anchors slide instantly (speed 0) and raise their own transitionend, so clearing here
-            // unconditionally disarms the guard in the very frame it exists to correct, and the re-anchor
-            // stands. A user drag supersedes the host's move outright, so that clears it too.
-            const hasArrived = element.swiper.realIndex === blazorState.intendedIndex;
-            if (blazorState.isUserDriven || hasArrived) {
+            // Not every transitionend belongs to the host's move - see shouldDisarmIntent.
+            if (shouldDisarmIntent(element.swiper.realIndex, blazorState.intendedIndex, blazorState.isUserDriven)) {
                 blazorState.intendedIndex = null;
             }
             blazorState.isUserDriven = false;
@@ -111,17 +116,16 @@ export function slideTo(element, index, speed) {
 
     state(swiper).intendedIndex = index;
 
-    if (swiper.params.cssMode) {
-        scrollToSlide(swiper, index, speed);
-        return;
-    }
-
-    // In loop mode slideTo takes a raw (shifted) index; slideToLoop takes the logical index, matching
-    // the realIndex we report back. Route through it so programmatic navigation lines up with loop.
-    if (swiper.params.loop) {
-        swiper.slideToLoop(index, speed ?? undefined);
-    } else {
-        swiper.slideTo(index, speed ?? undefined);
+    switch (navigationMode(swiper.params)) {
+        case "scroll":
+            scrollToSlide(swiper, index, speed);
+            break;
+        case "loop":
+            swiper.slideToLoop(index, optionalSpeed(speed));
+            break;
+        default:
+            swiper.slideTo(index, optionalSpeed(speed));
+            break;
     }
 }
 
@@ -131,16 +135,15 @@ export function slideTo(element, index, speed) {
 // started. Writing scrollLeft per frame is not cancellable, so the animation always completes.
 function scrollToSlide(swiper, index, speed) {
     const wrapper = swiper.wrapperEl;
-    const target = swiper.slides[index]?.offsetLeft ?? 0;
     const start = wrapper.scrollLeft;
-    const distance = target - start;
-    if (Math.abs(distance) < 1) {
+    const plan = scrollPlan(start, swiper.slides[index]?.offsetLeft ?? 0, speed, swiper.params.speed);
+
+    if (plan.kind === "none") {
         return;
     }
 
-    const durationMs = speed ?? swiper.params.speed ?? 300;
-    if (durationMs <= 0) {
-        wrapper.scrollLeft = target;
+    if (plan.kind === "instant") {
+        wrapper.scrollLeft = plan.target;
         return;
     }
 
@@ -148,12 +151,10 @@ function scrollToSlide(swiper, index, speed) {
     wrapper.style.scrollSnapType = "none";
 
     const startTime = performance.now();
-    const easeOutCubic = (progress) => 1 - Math.pow(1 - progress, 3);
-
     const step = (now) => {
-        const progress = Math.min((now - startTime) / durationMs, 1);
-        wrapper.scrollLeft = start + distance * easeOutCubic(progress);
-        if (progress < 1) {
+        const elapsed = now - startTime;
+        wrapper.scrollLeft = scrollPositionAt(start, plan.distance, elapsed, plan.duration);
+        if (elapsed < plan.duration) {
             requestAnimationFrame(step);
         } else {
             wrapper.style.scrollSnapType = previousSnapType;
@@ -163,11 +164,11 @@ function scrollToSlide(swiper, index, speed) {
 }
 
 export function slideNext(element, speed) {
-    element?.swiper?.slideNext(speed ?? undefined);
+    element?.swiper?.slideNext(optionalSpeed(speed));
 }
 
 export function slidePrev(element, speed) {
-    element?.swiper?.slidePrev(speed ?? undefined);
+    element?.swiper?.slidePrev(optionalSpeed(speed));
 }
 
 // Swiper's resize handling ends by re-anchoring onto the index it holds, and it defers that by a frame.
@@ -178,15 +179,18 @@ export function slidePrev(element, speed) {
 function attachIntendedIndexGuard(element, swiper) {
     element.addEventListener("swiperresize", () => {
         const blazorState = state(swiper);
-        if (blazorState.intendedIndex === null || blazorState.isUserDriven) {
+        // Deliberately not shouldReanchor: the drift this defends against happens in Swiper's own
+        // deferred frame, so at this point the index still matches and the check would skip the
+        // very case the guard exists for. Only armed-ness can be judged this early.
+        if (!isIntentArmed(blazorState.intendedIndex) || blazorState.isUserDriven) {
             return;
         }
 
         requestAnimationFrame(() => {
-            if (!element.swiper || blazorState.intendedIndex === null || blazorState.isUserDriven) {
+            if (!element.swiper) {
                 return;
             }
-            if (swiper.realIndex !== blazorState.intendedIndex) {
+            if (shouldReanchor(swiper.realIndex, blazorState.intendedIndex, blazorState.isUserDriven)) {
                 applyAnchor(swiper, blazorState.intendedIndex);
             }
         });
