@@ -232,7 +232,7 @@ public partial class Swiper : IAsyncDisposable
         // somewhere other than slide 0 is never seen at slide 0 first.
         await OnReady.InvokeAsync();
         _isPositioned = true;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
 
         Initialized?.Invoke();
 

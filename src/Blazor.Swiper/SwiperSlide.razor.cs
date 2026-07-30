@@ -100,7 +100,7 @@ public partial class SwiperSlide : IDisposable
     /// </summary>
     internal void NotifyStateChanged()
     {
-        InvokeAsync(StateHasChanged);
+        _ = InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
