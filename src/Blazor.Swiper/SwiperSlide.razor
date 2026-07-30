@@ -1,12 +1,35 @@
 @namespace Kebechet.Blazor.Swiper
 
-<swiper-slide @attributes="AdditionalAttributes">
-    @ChildContent
+<swiper-slide @attributes="RenderedAttributes">
+    @if (Zoom)
+    {
+        @* Only content inside the zoom container is zoomable, so the slide adds it rather than
+           making every caller remember the class. *@
+        <div class="swiper-zoom-container">
+            @Content()
+        </div>
+    }
+    else
+    {
+        @Content()
+    }
 </swiper-slide>
 
 @code {
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-
-    [Parameter(CaptureUnmatchedValues = true)]
-    public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
+    /// <summary>
+    /// Whichever content the caller supplied, with the state-aware form winning.
+    /// </summary>
+    /// <remarks>
+    /// Two parameters rather than one generic <c>ChildContent</c>: Razor gives every templated
+    /// component's content an implicit <c>context</c>, and a generic <c>ChildContent</c> here would
+    /// collide with the enclosing one every time a slide sits inside another templated component -
+    /// a story template, a <c>Virtualize</c>, a layout. Plain content is the common case and should
+    /// not pay for a feature it does not use.
+    /// </remarks>
+    private RenderFragment Content()
+    {
+        return SlideContent is not null
+            ? builder => SlideContent(CurrentState)(builder)
+            : ChildContent ?? (builder => { });
+    }
 }

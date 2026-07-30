@@ -1,19 +1,116 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
 namespace Kebechet.Blazor.Swiper;
 
 /// <summary>
-/// Renders a Swiper slider. Place <see cref="SwiperSlide"/> components in its content, and
-/// capture it with <c>@ref</c> to drive it from C# (<see cref="SlideTo"/>, <see cref="Update"/>, ...).
+/// Renders a Swiper slider. Place <see cref="SwiperSlide"/> components in its content, bind
+/// <see cref="ActiveIndex"/> to follow and drive the position, and capture it with <c>@ref</c> for
+/// the rest of the API.
 /// </summary>
 public partial class Swiper : IAsyncDisposable
 {
-    /// <summary>Parameters passed to the underlying Swiper on init.</summary>
+    /// <summary>Parameters passed to the underlying Swiper.</summary>
+    /// <remarks>
+    /// Changing this pushes the members that moved to the live slider, for the parameters Swiper can
+    /// re-apply after init. The ones it only reads while initializing are ignored, and say so in the
+    /// browser console rather than failing silently.
+    /// </remarks>
     [Parameter] public SwiperOptions Options { get; set; } = new();
 
     /// <summary>The slides, i.e. a set of <see cref="SwiperSlide"/> components.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// The active slide's logical index. Two-way bindable with <c>@bind-ActiveIndex</c>: setting it
+    /// moves the slider, and the slider moving sets it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Always the index into your own collection. In <see cref="SwiperOptions.Loop"/> mode Swiper's
+    /// internal index counts duplicated slides that your collection does not have, and a bound move
+    /// routes through Swiper's loop-aware navigation so that both directions agree.
+    /// </para>
+    /// <para>
+    /// A bound change animates at <see cref="SwiperOptions.Speed"/>. Call
+    /// <see cref="SlideTo(int, int?)"/> with a speed of 0 for an instant jump.
+    /// </para>
+    /// <para>
+    /// Supplying a value before the slider initializes chooses the slide it opens on, so binding an
+    /// index of 2 starts on the third slide rather than starting at 0 and jumping.
+    /// </para>
+    /// </remarks>
+    [Parameter]
+    public int ActiveIndex
+    {
+        get => _activeIndex;
+        set
+        {
+            if (_activeIndex == value)
+            {
+                return;
+            }
+
+            _activeIndex = value;
+            _isHostIndexChangePending = true;
+        }
+    }
+
+    /// <summary>Raised when <see cref="ActiveIndex"/> changes, whoever caused it.</summary>
+    [Parameter] public EventCallback<int> ActiveIndexChanged { get; set; }
+
+    /// <summary>
+    /// Whether autoplay is running. Two-way bindable with <c>@bind-IsAutoplayRunning</c>, which is
+    /// what a play/pause button wants: autoplay also stops itself, on interaction and at the last
+    /// slide, and the binding follows that.
+    /// </summary>
+    [Parameter]
+    public bool IsAutoplayRunning
+    {
+        get => _isAutoplayRunning;
+        set
+        {
+            if (_isAutoplayRunning == value)
+            {
+                return;
+            }
+
+            _isAutoplayRunning = value;
+            _isHostAutoplayChangePending = true;
+        }
+    }
+
+    /// <summary>Raised when <see cref="IsAutoplayRunning"/> changes, whoever caused it.</summary>
+    [Parameter] public EventCallback<bool> IsAutoplayRunningChanged { get; set; }
+
+    /// <summary>
+    /// A second slider acting as this one's thumbnail strip.
+    /// </summary>
+    /// <remarks>
+    /// Wired once both sliders have initialized, whichever order that happens in. Configure the
+    /// behaviour through <see cref="SwiperOptions.Thumbs"/>; the strip itself lives here because a
+    /// component reference cannot be serialized into an options object.
+    /// </remarks>
+    [Parameter] public Swiper? Thumbs { get; set; }
+
+    /// <summary>
+    /// A second slider this one drives. Configure the behaviour through
+    /// <see cref="SwiperOptions.Controller"/>.
+    /// </summary>
+    [Parameter] public Swiper? Controller { get; set; }
+
+    /// <summary>
+    /// Shortest interval between deliveries of the events that fire on every animation frame -
+    /// progress, setTranslate, setTransition, sliderMove, touchMove, touchMoveOpposite,
+    /// autoplayTimeLeft, zoomChange and scroll. Null delivers every one.
+    /// </summary>
+    /// <remarks>
+    /// Worth setting on Blazor Server, where each delivery is a network round trip; on WebAssembly
+    /// the call is in-process and the default is usually fine. The first event of a burst is always
+    /// delivered, so a throttled <see cref="OnProgress"/> still sees a drag start immediately.
+    /// </remarks>
+    [Parameter] public TimeSpan? EventThrottle { get; set; }
 
     /// <summary>Raised on every slide change, with the new active slide index - whoever caused it.</summary>
     [Parameter] public EventCallback<int> OnSlideChange { get; set; }
@@ -27,41 +124,36 @@ public partial class Swiper : IAsyncDisposable
     /// </summary>
     [Parameter] public EventCallback<int> OnUserSlideChange { get; set; }
 
-    /// <summary>Raised when the last slide is reached.</summary>
-    [Parameter] public EventCallback OnReachEnd { get; set; }
-
-    /// <summary>Raised when the first slide is reached.</summary>
-    [Parameter] public EventCallback OnReachBeginning { get; set; }
-
-    /// <summary>Raised once the underlying Swiper has initialized and positioned its initial slide.</summary>
-    [Parameter] public EventCallback OnReady { get; set; }
-
-    /// <summary>Raised when a slide transition finishes, i.e. the slider has settled at rest.</summary>
-    [Parameter] public EventCallback OnTransitionEnd { get; set; }
-
     /// <summary>
-    /// Raised the first time a drag actually moves the slider. Use it to tell a user-driven slide change
-    /// apart from a programmatic one - by index alone they are identical, and in <see cref="SwiperOptions.Loop"/>
-    /// mode a programmatic move is followed by an echo announcing the slide that was left. A plain tap does
-    /// not raise this, so a button inside a slide cannot be mistaken for a swipe. The slider keeps moving
-    /// afterwards, so treat the interaction as over on <see cref="OnTransitionEnd"/>, not on pointer release.
-    /// Not raised in <see cref="SwiperOptions.CssMode"/>, where the browser owns the scroll.
+    /// Raised once the underlying Swiper has initialized and positioned its initial slide, and before
+    /// the slider is revealed. This is the wrapper's own moment rather than Swiper's
+    /// <see cref="OnInit"/>, and it is where a host puts its own opening position.
     /// </summary>
-    [Parameter] public EventCallback OnSliderFirstMove { get; set; }
+    [Parameter] public EventCallback OnReady { get; set; }
 
     /// <summary>Attributes forwarded to the underlying <c>&lt;swiper-container&gt;</c> element.</summary>
     [Parameter(CaptureUnmatchedValues = true)]
     public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
 
-    /// <summary>The active slide index, kept in sync with the underlying Swiper.</summary>
-    public int ActiveIndex { get; private set; }
-
     private const string ModulePath = "./_content/Kebechet.Blazor.Swiper/swiper-interop.js";
     private const string HiddenStyle = "visibility:hidden";
+
+    private static readonly JsonSerializerOptions SnapshotSerializer = new(JsonSerializerDefaults.Web);
 
     private ElementReference _element;
     private IJSObjectReference? _module;
     private DotNetObjectReference<Swiper>? _selfReference;
+
+    private int _activeIndex;
+    private bool _isHostIndexChangePending;
+    private bool _isAutoplayRunning;
+    private bool _isHostAutoplayChangePending;
+
+    private string? _appliedOptionsJson;
+    private string[] _subscribedEvents = Array.Empty<string>();
+    private Swiper? _wiredThumbs;
+    private Swiper? _wiredController;
+    private readonly HashSet<Swiper> _awaitedCompanions = new();
 
     /// <summary>
     /// Swiper Element lays its slides on top of one another until it has initialized and positioned the
@@ -70,6 +162,12 @@ public partial class Swiper : IAsyncDisposable
     /// slides are still laid out and measurable (autoHeight, media loading) before they are shown.
     /// </summary>
     private bool _isPositioned;
+
+    /// <summary>The element the underlying <c>&lt;swiper-container&gt;</c> was rendered onto.</summary>
+    internal ElementReference Element => _element;
+
+    /// <summary>Whether the interop module has loaded and the underlying Swiper exists.</summary>
+    internal bool IsInitialized => _module is not null && _isPositioned;
 
     private IReadOnlyDictionary<string, object>? _renderedAttributes =>
         _isPositioned ? AdditionalAttributes : WithHiddenVisibility(AdditionalAttributes);
@@ -100,162 +198,270 @@ public partial class Swiper : IAsyncDisposable
     /// <inheritdoc />
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (firstRender)
         {
+            await InitializeAsync();
             return;
         }
 
+        await WireCompanionsAsync();
+    }
+
+    private async Task InitializeAsync()
+    {
         _module = await JS.InvokeAsync<IJSObjectReference>("import", ModulePath);
         _selfReference = DotNetObjectReference.Create(this);
-        await _module.InvokeVoidAsync("initialize", _element, Options, _selfReference);
+        _subscribedEvents = SubscribedEventNames();
 
-        // Revealed only after OnReady, since that is where a host puts its own initial positioning.
+        var options = WithInitialSlide(Options);
+
+        // The caller's own options are the snapshot, not the derived ones: the initial slide folded in
+        // above is the wrapper's doing, and comparing against it would report a change on the very next
+        // parameter set and push an update nobody asked for.
+        _appliedOptionsJson = SerializeOptions(Options);
+
+        await _module.InvokeVoidAsync(
+            "initialize",
+            _element,
+            options,
+            _selfReference,
+            _subscribedEvents,
+            EventThrottle?.TotalMilliseconds ?? 0);
+
+        // The host's own opening position belongs before the reveal, so that a slider told to start
+        // somewhere other than slide 0 is never seen at slide 0 first.
         await OnReady.InvokeAsync();
         _isPositioned = true;
         StateHasChanged();
-    }
 
-    /// <summary>Transition to the slide at <paramref name="index"/>.</summary>
-    public async Task SlideTo(int index, int? speed = null)
-    {
-        if (_module is not null)
-        {
-            await _module.InvokeVoidAsync("slideTo", _element, index, speed);
-        }
-    }
+        Initialized?.Invoke();
 
-    /// <summary>Transition to the next slide.</summary>
-    public async Task SlideNext(int? speed = null)
-    {
-        if (_module is not null)
-        {
-            await _module.InvokeVoidAsync("slideNext", _element, speed);
-        }
-    }
-
-    /// <summary>Transition to the previous slide.</summary>
-    public async Task SlidePrev(int? speed = null)
-    {
-        if (_module is not null)
-        {
-            await _module.InvokeVoidAsync("slidePrev", _element, speed);
-        }
-    }
-
-    /// <summary>Recalculate Swiper after the slide collection changed (add/remove of child slides).</summary>
-    public async Task Update()
-    {
-        if (_module is not null)
-        {
-            await _module.InvokeVoidAsync("update", _element);
-        }
+        await WireCompanionsAsync();
     }
 
     /// <summary>
-    /// Re-anchor onto <paramref name="index"/> the moment the slide elements are next added or removed by
-    /// the framework. Call this <em>before</em> mutating the slides. Removing a slide that sits before the
-    /// active one shifts every later slide sideways, and correcting that from a call made after the change
-    /// is a race the browser can win by painting first. This arms a <c>MutationObserver</c>, whose callback
-    /// is delivered before the next paint, so the correction always lands in the same frame as the change.
-    /// It is one-shot: only the next slide-collection mutation is anchored.
+    /// Raised once this slider has initialized, so a slider holding it as a companion can wire up.
     /// </summary>
-    public async Task ArmAnchor(int index)
-    {
-        if (_module is not null)
-        {
-            await _module.InvokeVoidAsync("armAnchor", _element, index);
-        }
-    }
+    /// <remarks>
+    /// Two sibling components initialize in render order and each one's initialization is
+    /// asynchronous, so which finishes first is not something either can rely on. Without this the
+    /// slider that names the other would wire only when it happened to re-render after the other was
+    /// ready - which it usually does, and sometimes does not.
+    /// </remarks>
+    internal event Action? Initialized;
 
     /// <summary>
-    /// Recalculate after the slide collection changed AND settle instantly on <paramref name="index"/>, as
-    /// one operation. Use this instead of <see cref="Update"/> + <see cref="SlideTo"/> whenever the change
-    /// removed or inserted a slide <em>before</em> the active one: those shift every later slide sideways,
-    /// and doing the two steps separately lets the slider be seen at the stale offset in between. Swipe
-    /// locks are ignored for the correction and left as they were.
+    /// The options actually sent at init, with a bound <see cref="ActiveIndex"/> folded in as the
+    /// starting slide.
     /// </summary>
-    public async Task UpdateAndAnchor(int index)
+    /// <remarks>
+    /// Seeding <c>initialSlide</c> rather than moving after the fact is what makes an opening index
+    /// invisible: a <c>SlideTo</c> issued once the slider exists is a second frame, and the first one
+    /// shows slide 0. An explicit <see cref="SwiperOptions.InitialSlide"/> wins, since that is the
+    /// caller being specific.
+    /// </remarks>
+    private SwiperOptions WithInitialSlide(SwiperOptions options)
+    {
+        _isHostIndexChangePending = false;
+
+        if (_activeIndex == 0 || options.InitialSlide is not null)
+        {
+            return options;
+        }
+
+        return options with { InitialSlide = _activeIndex };
+    }
+
+    /// <inheritdoc />
+    protected override async Task OnParametersSetAsync()
     {
         if (_module is null)
         {
             return;
         }
 
-        // The correction has to land in the same turn as the DOM change that caused it. Awaiting the call
-        // yields, and the browser paints the shifted-but-uncorrected track in that gap - measured at ~21ms
-        // on a Pixel 6, i.e. a visible frame of the wrong slide. In-process interop is synchronous, so the
-        // browser never gets a chance to paint; Blazor Server has no such option and keeps the async path.
-        if (_module is IJSInProcessObjectReference inProcessModule)
+        await ApplyChangedOptionsAsync();
+        await ApplyChangedSubscriptionsAsync();
+
+        if (_isHostIndexChangePending)
         {
-            inProcessModule.InvokeVoid("updateAndAnchor", _element, index);
+            _isHostIndexChangePending = false;
+            await SlideTo(_activeIndex);
+        }
+
+        if (_isHostAutoplayChangePending)
+        {
+            _isHostAutoplayChangePending = false;
+            await (_isAutoplayRunning ? Autoplay.Start() : Autoplay.Stop());
+        }
+    }
+
+    private async Task ApplyChangedOptionsAsync()
+    {
+        var snapshot = SerializeOptions(Options);
+        if (snapshot == _appliedOptionsJson)
+        {
             return;
         }
 
-        await _module.InvokeVoidAsync("updateAndAnchor", _element, index);
+        _appliedOptionsJson = snapshot;
+        await _module!.InvokeVoidAsync("updateOptions", _element, Options);
     }
 
-    /// <summary>Enable/disable moving forward (e.g. lock swiping so only a Next button advances).</summary>
-    public async Task SetAllowSlideNext(bool value)
+    /// <summary>
+    /// Keeps the listened-for events in step with the callbacks that are actually wired.
+    /// </summary>
+    /// <remarks>
+    /// A host can assign a callback conditionally - a debug panel that only subscribes to
+    /// <see cref="OnProgress"/> while it is open - and a subscription list fixed at init would
+    /// either miss it or pay for it forever.
+    /// </remarks>
+    private async Task ApplyChangedSubscriptionsAsync()
     {
-        if (_module is not null)
+        var subscriptions = SubscribedEventNames();
+        if (subscriptions.SequenceEqual(_subscribedEvents))
         {
-            await _module.InvokeVoidAsync("setAllowSlideNext", _element, value);
+            return;
+        }
+
+        _subscribedEvents = subscriptions;
+        await _module!.InvokeVoidAsync("setSubscriptions", _element, subscriptions);
+    }
+
+    /// <summary>
+    /// Links the thumbnail strip and the controlled slider once both sides exist.
+    /// </summary>
+    /// <remarks>
+    /// A companion is routinely not ready when this slider is, so one that is still initializing is
+    /// waited on rather than skipped - see <see cref="Initialized"/>. That way the host can write the
+    /// two sliders in whichever order reads best rather than in the order the wrapper needs.
+    /// </remarks>
+    private async Task WireCompanionsAsync()
+    {
+        if (_module is null)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(_wiredThumbs, Thumbs) && await IsCompanionReadyAsync(Thumbs))
+        {
+            _wiredThumbs = Thumbs;
+            await _module.InvokeVoidAsync("setThumbs", _element, Thumbs!.Element);
+        }
+
+        if (!ReferenceEquals(_wiredController, Controller) && await IsCompanionReadyAsync(Controller))
+        {
+            _wiredController = Controller;
+            await _module.InvokeVoidAsync("setController", _element, Controller!.Element);
         }
     }
 
-    /// <summary>Enable/disable moving backward.</summary>
-    public async Task SetAllowSlidePrev(bool value)
+    /// <summary>
+    /// Whether a companion can be wired now, arranging to be told when it can if it cannot.
+    /// </summary>
+    private Task<bool> IsCompanionReadyAsync(Swiper? companion)
     {
-        if (_module is not null)
+        if (companion is null)
         {
-            await _module.InvokeVoidAsync("setAllowSlidePrev", _element, value);
+            return Task.FromResult(false);
         }
+
+        if (companion.IsInitialized)
+        {
+            return Task.FromResult(true);
+        }
+
+        if (_awaitedCompanions.Add(companion))
+        {
+            companion.Initialized += OnCompanionInitialized;
+        }
+
+        return Task.FromResult(false);
     }
 
-    /// <summary>Interop callback for Swiper's <c>slidechange</c> event. Not intended to be called from your code.</summary>
+    private void OnCompanionInitialized()
+    {
+        _ = InvokeAsync(WireCompanionsAsync);
+    }
+
+    /// <summary>
+    /// The options as JSON, which is both the change-detection snapshot and what the interop
+    /// serializer will produce for the same object.
+    /// </summary>
+    internal static string SerializeOptions(SwiperOptions options) => JsonSerializer.Serialize(options, SnapshotSerializer);
+
+    /// <summary>Interop callback for Swiper's <c>slideChange</c> event. Not intended to be called from your code.</summary>
+    /// <param name="activeIndex">The new logical slide index.</param>
+    /// <param name="isUserDriven">Whether a drag caused the change.</param>
     [JSInvokable]
     public async Task OnSlideChangeInternal(int activeIndex, bool isUserDriven)
     {
-        ActiveIndex = activeIndex;
+        // Assigned to the field rather than through the property, so that reporting a change the
+        // slider made does not read back as the host asking for a move to the slide it is already on.
+        _activeIndex = activeIndex;
+        NotifySlides();
+
         await OnSlideChange.InvokeAsync(activeIndex);
 
         if (isUserDriven)
         {
             await OnUserSlideChange.InvokeAsync(activeIndex);
         }
+
+        await ActiveIndexChanged.InvokeAsync(activeIndex);
     }
 
-    /// <summary>Interop callback for Swiper's <c>reachend</c> event. Not intended to be called from your code.</summary>
-    [JSInvokable]
-    public Task OnReachEndInternal()
+    private readonly List<SwiperSlide> _registeredSlides = new();
+
+    /// <summary>
+    /// Records a slide so it can work out its own position and be told when the active one changes.
+    /// </summary>
+    /// <remarks>
+    /// Registration order is render order, which is the collection's order for the case that matters:
+    /// a fixed list, or one appended to. A slide inserted into the middle registers at the end, which
+    /// is what <see cref="SwiperSlide.Index"/> is for.
+    /// </remarks>
+    internal void RegisterSlide(SwiperSlide slide)
     {
-        return OnReachEnd.InvokeAsync();
+        _registeredSlides.Add(slide);
     }
 
-    /// <summary>Interop callback for Swiper's <c>reachbeginning</c> event. Not intended to be called from your code.</summary>
-    [JSInvokable]
-    public Task OnReachBeginningInternal()
+    internal void UnregisterSlide(SwiperSlide slide)
     {
-        return OnReachBeginning.InvokeAsync();
+        _registeredSlides.Remove(slide);
     }
 
-    /// <summary>Interop callback for Swiper's <c>transitionend</c> event. Not intended to be called from your code.</summary>
-    [JSInvokable]
-    public Task OnTransitionEndInternal()
+    internal int IndexOfSlide(SwiperSlide slide) => _registeredSlides.IndexOf(slide);
+
+    private void NotifySlides()
     {
-        return OnTransitionEnd.InvokeAsync();
+        foreach (var slide in _registeredSlides)
+        {
+            slide.NotifyStateChanged();
+        }
     }
 
-    /// <summary>Interop callback for Swiper's <c>sliderFirstMove</c> event. Not intended to be called from your code.</summary>
-    [JSInvokable]
-    public Task OnSliderFirstMoveInternal()
+    private async Task SetAutoplayRunning(bool isRunning)
     {
-        return OnSliderFirstMove.InvokeAsync();
+        if (_isAutoplayRunning == isRunning)
+        {
+            return;
+        }
+
+        _isAutoplayRunning = isRunning;
+        await IsAutoplayRunningChanged.InvokeAsync(isRunning);
     }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
+        foreach (var companion in _awaitedCompanions)
+        {
+            companion.Initialized -= OnCompanionInitialized;
+        }
+
+        _awaitedCompanions.Clear();
+
         try
         {
             if (_module is not null)

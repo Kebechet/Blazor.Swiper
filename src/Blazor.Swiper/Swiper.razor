@@ -2,5 +2,7 @@
 @inject IJSRuntime JS
 
 <swiper-container @ref="_element" init="false" @attributes="_renderedAttributes">
-    @ChildContent
+    <CascadingValue Value="this" IsFixed="true">
+        @ChildContent
+    </CascadingValue>
 </swiper-container>

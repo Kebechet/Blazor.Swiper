@@ -39,7 +39,7 @@ public sealed class DemoFixture : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        var repositoryRoot = FindRepositoryRoot();
+        var repositoryRoot = RepositoryRoot;
         var port = ReserveTcpPort();
         BaseUrl = $"http://127.0.0.1:{port}";
 
@@ -178,18 +178,27 @@ public sealed class DemoFixture : IAsyncLifetime
     /// </remarks>
     public async Task<ILocator> NavigateToStoryAsync(string storyId, string stateTestId)
     {
-        lock (_jsErrors) _jsErrors.Clear();
-        var url = $"{BaseUrl}/iframe.html?viewMode=story&id={storyId}&e2e={Guid.NewGuid():N}";
-        await Page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
+        var canvas = await NavigateToStoryAsync(storyId);
 
-        var canvas = Page.Locator("body");
         await canvas.GetByTestId(stateTestId).WaitForAsync(new LocatorWaitForOptions
         {
             State = WaitForSelectorState.Visible,
             Timeout = 60_000
         });
 
-        // The state panel renders before OnAfterRenderAsync has imported the interop module and
+        return canvas;
+    }
+
+    /// <summary>
+    /// Navigates to a story that has no state panel, e.g. one that is only about how it looks.
+    /// </summary>
+    public async Task<ILocator> NavigateToStoryAsync(string storyId)
+    {
+        lock (_jsErrors) _jsErrors.Clear();
+        var url = $"{BaseUrl}/iframe.html?viewMode=story&id={storyId}&e2e={Guid.NewGuid():N}";
+        await Page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded });
+
+        // Blazor paints the story before OnAfterRenderAsync has imported the interop module and
         // called element.initialize(). A swipe started in that window is silently inert, and the
         // slider is still hidden, so wait for Swiper itself rather than for Blazor's first paint.
         await Page.WaitForFunctionAsync(
@@ -198,9 +207,28 @@ public sealed class DemoFixture : IAsyncLifetime
                 return containers.length > 0 && containers.every(c => c.swiper && c.swiper.initialized);
             }",
             null,
-            new PageWaitForFunctionOptions { Timeout = 30_000 });
+            new PageWaitForFunctionOptions { Timeout = 60_000 });
 
-        return canvas;
+        return Page.Locator("body");
+    }
+
+    /// <summary>Reads a Swiper parameter off a slider, as Swiper itself resolved it.</summary>
+    /// <remarks>
+    /// The one assertion that proves an option actually arrived: the wrapper serializes it, the
+    /// element parses it, and Swiper merges it with its own defaults - and nothing short of asking
+    /// Swiper afterwards shows that the value survived all three.
+    /// </remarks>
+    public Task<T> ReadParameterAsync<T>(string testId, string parameterPath)
+    {
+        return Page.EvaluateAsync<T>(
+            $"() => document.querySelector('[data-testid=\"{testId}\"]').swiper.params.{parameterPath}");
+    }
+
+    /// <summary>Reads anything else off the live Swiper instance.</summary>
+    public Task<T> ReadSwiperAsync<T>(string testId, string expression)
+    {
+        return Page.EvaluateAsync<T>(
+            $"() => {{ const s = document.querySelector('[data-testid=\"{testId}\"]').swiper; return {expression}; }}");
     }
 
     private async Task WaitForDemoAsync(TimeSpan timeout)
@@ -250,6 +278,9 @@ public sealed class DemoFixture : IAsyncLifetime
         listener.Stop();
         return port;
     }
+
+    /// <summary>The repository root, found by walking up from the test assembly.</summary>
+    public static string RepositoryRoot => FindRepositoryRoot();
 
     private static string FindRepositoryRoot()
     {

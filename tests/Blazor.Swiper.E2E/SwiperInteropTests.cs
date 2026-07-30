@@ -99,7 +99,7 @@ public sealed class SwiperInteropTests(DemoFixture fixture)
         var canvas = await fixture.NavigateToStoryAsync(DistinctionStory, "distinction-state");
 
         // Act
-        await SwipeLeftAsync(fixture.Page, canvas.GetByTestId("distinction-swiper"));
+        await SwipeHelper.SwipeLeftAsync(fixture.Page, canvas.GetByTestId("distinction-swiper"));
 
         // Assert
         var state = await WaitForStateAsync(
@@ -145,51 +145,15 @@ public sealed class SwiperInteropTests(DemoFixture fixture)
         await fixture.NavigateToStoryAsync(UntypedStory, "untyped-state");
 
         // Act
-        var slidesPerView = await ReadParameterAsync<double>("untyped-swiper", "slidesPerView");
-        var slidesPerGroup = await ReadParameterAsync<int>("untyped-swiper", "slidesPerGroup");
-        var grabCursor = await ReadParameterAsync<bool>("untyped-swiper", "grabCursor");
+        var slidesPerView = await fixture.ReadParameterAsync<double>("untyped-swiper", "slidesPerView");
+        var slidesPerGroup = await fixture.ReadParameterAsync<int>("untyped-swiper", "slidesPerGroup");
+        var grabCursor = await fixture.ReadParameterAsync<bool>("untyped-swiper", "grabCursor");
 
         // Assert - the first came from Options, the other two from attributes Swiper Element parsed.
         Assert.Equal(2d, slidesPerView);
         Assert.Equal(2, slidesPerGroup);
         Assert.True(grabCursor, "grab-cursor did not reach Swiper as a parameter.");
         fixture.AssertNoJsErrors();
-    }
-
-    private Task<T> ReadParameterAsync<T>(string testId, string parameterName)
-    {
-        return fixture.Page.EvaluateAsync<T>(
-            $"() => document.querySelector('[data-testid=\"{testId}\"]').swiper.params.{parameterName}");
-    }
-
-    /// <summary>
-    /// Drags from the right of the slider to the left, far enough past Swiper's long-swipe ratio
-    /// to commit to the next slide.
-    /// </summary>
-    /// <remarks>
-    /// Stepped with a frame's delay between moves rather than jumped in one go: Swiper decides
-    /// whether a gesture is a swipe from the movement between successive pointer events, and a
-    /// single large jump gives it nothing to measure. The first of those moves is also what raises
-    /// sliderFirstMove, which is the entire basis of the user-driven distinction.
-    /// </remarks>
-    private static async Task SwipeLeftAsync(IPage page, ILocator slider)
-    {
-        var box = await slider.BoundingBoxAsync() ?? throw new InvalidOperationException("The slider has no layout box.");
-        var y = box.Y + (box.Height / 2);
-        var startX = box.X + (box.Width * 0.85f);
-        var endX = box.X + (box.Width * 0.15f);
-
-        await page.Mouse.MoveAsync(startX, y);
-        await page.Mouse.DownAsync();
-
-        const int steps = 15;
-        for (var step = 1; step <= steps; step++)
-        {
-            await page.Mouse.MoveAsync(startX + ((endX - startX) * step / steps), y);
-            await Task.Delay(16);
-        }
-
-        await page.Mouse.UpAsync();
     }
 
     private static async Task<SwiperState> WaitForStateAsync(

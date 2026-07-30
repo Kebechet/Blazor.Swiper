@@ -1,0 +1,170 @@
+@attribute [Stories("Components/Swiper/Effects")]
+
+<Stories TComponent="Swiper">
+
+    <Story Name="Fade">
+        <Description>
+            The slides cross-dissolve in place rather than travelling. <code>CrossFade</code> fades the
+            outgoing slide out as well, which matters when the slides are not opaque.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_fadeOptions" data-testid="fade-swiper">
+                    <DemoSlides />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Cube">
+        <Description>
+            The slides become the faces of a rotating cube. It wants one slide in view and no gap between
+            them - a cube with a gap has nothing to be a face of.
+        </Description>
+        <Template>
+            <div style="width: 300px; padding: 40px;">
+                <Swiper Options="_cubeOptions" data-testid="cube-swiper">
+                    <DemoSlides Count="4" Height="300" />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Coverflow">
+        <Description>
+            Slides fan out in perspective around the active one. It is the one effect that wants several
+            slides visible and the active one centred, so it is normally paired with
+            <code>SlidesPerView</code> above 1 and <code>CenteredSlides</code>.
+        </Description>
+        <Template>
+            <div style="width: 520px;">
+                <Swiper Options="_coverflowOptions" data-testid="coverflow-swiper">
+                    <DemoSlides Count="7" Height="220" />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Flip">
+        <Description>
+            Each slide flips over to reveal the next. <code>LimitRotation</code> keeps the turn within a
+            half circle, which reads as a card being turned rather than spun.
+        </Description>
+        <Template>
+            <div style="width: 320px; padding: 24px;">
+                <Swiper Options="_flipOptions" data-testid="flip-swiper">
+                    <DemoSlides Count="4" Height="260" />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Cards">
+        <Description>
+            A stack of cards the user flicks through. <code>PerSlideRotate</code> and
+            <code>PerSlideOffset</code> control how much of the cards underneath show.
+        </Description>
+        <Template>
+            <div style="width: 280px; padding: 24px;">
+                <Swiper Options="_cardsOptions" data-testid="cards-swiper">
+                    <DemoSlides Count="5" Height="320" />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Creative">
+        <Description>
+            Fully custom per-slide transforms - every other effect is a preset of this one. Each side gets a
+            translate, a rotation, an opacity and a scale, and <code>Perspective</code> has to be on for the
+            3D parts of them to mean anything.
+        </Description>
+        <Template>
+            <div style="width: 360px; padding: 24px;">
+                <Swiper Options="_creativeOptions" data-testid="creative-swiper">
+                    <DemoSlides Count="5" Height="260" />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+</Stories>
+
+@code {
+    private readonly SwiperOptions _fadeOptions = new()
+    {
+        Effect = SwiperEffect.Fade,
+        Pagination = true,
+        FadeEffect = new SwiperFadeEffectOptions { CrossFade = true }
+    };
+
+    private readonly SwiperOptions _cubeOptions = new()
+    {
+        Effect = SwiperEffect.Cube,
+        Pagination = true,
+        GrabCursor = true,
+        CubeEffect = new SwiperCubeEffectOptions
+        {
+            Shadow = true,
+            SlideShadows = true,
+            ShadowOffset = 20,
+            ShadowScale = 0.94
+        }
+    };
+
+    private readonly SwiperOptions _coverflowOptions = new()
+    {
+        Effect = SwiperEffect.Coverflow,
+        SlidesPerView = 3,
+        CenteredSlides = true,
+        GrabCursor = true,
+        Pagination = true,
+        CoverflowEffect = new SwiperCoverflowEffectOptions
+        {
+            Rotate = 40,
+            Stretch = 0,
+            Depth = 120,
+            Modifier = 1,
+            SlideShadows = true
+        }
+    };
+
+    private readonly SwiperOptions _flipOptions = new()
+    {
+        Effect = SwiperEffect.Flip,
+        GrabCursor = true,
+        Pagination = true,
+        FlipEffect = new SwiperFlipEffectOptions { SlideShadows = true, LimitRotation = true }
+    };
+
+    private readonly SwiperOptions _cardsOptions = new()
+    {
+        Effect = SwiperEffect.Cards,
+        GrabCursor = true,
+        CardsEffect = new SwiperCardsEffectOptions { PerSlideOffset = 10, PerSlideRotate = 3, SlideShadows = true }
+    };
+
+    private readonly SwiperOptions _creativeOptions = new()
+    {
+        Effect = SwiperEffect.Creative,
+        GrabCursor = true,
+        Pagination = true,
+        CreativeEffect = new SwiperCreativeEffectOptions
+        {
+            Perspective = true,
+            LimitProgress = 2,
+            Prev = new SwiperCreativeEffectTransform
+            {
+                Translate = ["-20%", 0, -200],
+                Rotate = [0, 0, -8],
+                Opacity = 0.6
+            },
+            Next = new SwiperCreativeEffectTransform
+            {
+                Translate = ["20%", 0, -200],
+                Rotate = [0, 0, 8],
+                Opacity = 0.6
+            }
+        }
+    };
+}

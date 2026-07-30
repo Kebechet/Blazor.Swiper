@@ -6,7 +6,7 @@
         <Template>
             <div style="width: 420px;">
                 <Swiper Options="_defaultOptions">
-                    @Slides()
+                    <DemoSlides />
                 </Swiper>
             </div>
         </Template>
@@ -16,7 +16,7 @@
         <Template>
             <div style="width: 420px;">
                 <Swiper Options="_spaceBetweenOptions">
-                    @Slides()
+                    <DemoSlides />
                 </Swiper>
             </div>
         </Template>
@@ -26,7 +26,62 @@
         <Template>
             <div style="width: 420px;">
                 <Swiper Options="_multiPerViewOptions">
-                    @Slides()
+                    <DemoSlides />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Auto slides per view">
+        <Description>
+            <code>SlidesPerView = SwiperSlidesPerView.Auto</code> stops Swiper dividing the container into
+            equal shares and lets every slide keep its own width instead, fitting as many as there is room
+            for. It is the setting behind a strip of differently sized cards.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">
+                    Each slide sets its own width, so they are deliberately uneven - which a numeric
+                    <code>SlidesPerView</code> could not express.
+                </p>
+                <Swiper Options="_autoPerViewOptions" data-testid="auto-per-view-swiper">
+                    @foreach (var (label, width, color) in _unevenSlides)
+                    {
+                        <SwiperSlide style="@($"width:{width}px")">
+                            <div class="demo-slide" style="background:@color">@label</div>
+                        </SwiperSlide>
+                    }
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Slides per group">
+        <Description>
+            <code>SlidesPerGroup</code> is how far one move travels. With three slides in view and a group of
+            three, the slider pages rather than scrolls.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_slidesPerGroupOptions"
+                        OnSlideChange="index => Record(_groupLog, index)"
+                        data-testid="group-swiper">
+                    <DemoSlides Count="9" Height="120" />
+                </Swiper>
+                <SwiperState Json="@_groupLog.ToJson()" TestId="group-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Centered slides">
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">
+                    <code>CenteredSlides</code> puts the active slide in the middle rather than against the
+                    left edge, so the neighbours peek in on both sides.
+                </p>
+                <Swiper Options="_centeredOptions" data-testid="centered-swiper">
+                    <DemoSlides Count="6" Height="140" />
                 </Swiper>
             </div>
         </Template>
@@ -38,7 +93,7 @@
                not just on a wrapper - otherwise it collapses to content height. *@
             <div style="width: 420px; height: 240px;">
                 <Swiper Options="_verticalOptions" style="height: 100%;">
-                    @Slides()
+                    <DemoSlides />
                 </Swiper>
             </div>
         </Template>
@@ -54,13 +109,33 @@
                 </p>
                 <Swiper @ref="_loopSwiper"
                         Options="_loopOptions"
-                        OnSlideChange="OnLoopSlideChange"
-                        OnReady="OnLoopReady"
+                        OnSlideChange="index => Record(_loopLog, index)"
+                        OnReady="() => Ready(_loopLog)"
                         data-testid="loop-swiper">
-                    @Slides()
+                    <DemoSlides />
                 </Swiper>
                 <button class="demo-button" data-testid="loop-to-third" @onclick="() => _loopSwiper!.SlideTo(2)">To third slide</button>
                 <SwiperState Json="@_loopLog.ToJson()" TestId="loop-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Rewind">
+        <Description>
+            <code>Rewind</code> is loop mode's cheaper cousin: no duplicated slides, so no index arithmetic -
+            the slider simply jumps back to the first slide when Next runs out of slides, and to the last when
+            Prev does.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper @ref="_rewindSwiper"
+                        Options="_rewindOptions"
+                        OnSlideChange="index => Record(_rewindLog, index)"
+                        data-testid="rewind-swiper">
+                    <DemoSlides Count="3" />
+                </Swiper>
+                <button class="demo-button" data-testid="rewind-next" @onclick="() => _rewindSwiper!.SlideNext()">Next</button>
+                <SwiperState Json="@_rewindLog.ToJson()" TestId="rewind-state" />
             </div>
         </Template>
     </Story>
@@ -69,7 +144,7 @@
         <Template>
             <div style="width: 420px;">
                 <Swiper Options="_paginationOptions">
-                    @Slides()
+                    <DemoSlides />
                 </Swiper>
             </div>
         </Template>
@@ -79,21 +154,292 @@
         <Template>
             <div style="width: 420px;">
                 <Swiper Options="_navigationOptions">
-                    @Slides()
+                    <DemoSlides />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Scrollbar">
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">
+                    <code>Draggable</code> makes the bar itself a control rather than only an indicator.
+                </p>
+                <Swiper Options="_scrollbarOptions" data-testid="scrollbar-swiper">
+                    <DemoSlides Count="8" Height="140" />
                 </Swiper>
             </div>
         </Template>
     </Story>
 
     <Story Name="Forward only">
+        <Description>
+            <code>AllowSlidePrev = false</code> takes backwards away entirely - from the swipe, from the
+            navigation arrows <em>and</em> from the API, so even <code>SlidePrev()</code> does nothing. Not
+            to be confused with <em>One way movement</em>, which only changes what a backwards drag means;
+            the two stories look alike until you press Prev.
+        </Description>
         <Template>
             <div style="width: 420px;">
                 <p class="demo-hint">
-                    <code>AllowSlidePrev = false</code> locks back-swipe; the slider only moves forward.
+                    Drag backwards: nothing happens. Press Prev: also nothing - the slider genuinely
+                    cannot go back.
                 </p>
-                <Swiper Options="_forwardOnlyOptions">
-                    @Slides()
+                <Swiper @ref="_forwardOnlySwiper"
+                        Options="_forwardOnlyOptions"
+                        OnSlideChange="index => Record(_forwardOnlyLog, index)"
+                        data-testid="forward-only-swiper">
+                    <DemoSlides />
                 </Swiper>
+                <div style="display:flex;gap:8px">
+                    <button class="demo-button" data-testid="forward-only-prev" @onclick="() => _forwardOnlySwiper!.SlidePrev()">Prev</button>
+                    <button class="demo-button" data-testid="forward-only-next" @onclick="() => _forwardOnlySwiper!.SlideNext()">Next</button>
+                </div>
+                <SwiperState Json="@_forwardOnlyLog.ToJson()" TestId="forward-only-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="One way movement">
+        <Description>
+            <code>OneWayMovement</code> reinterprets the <em>drag</em>: whichever way the user pulls, the
+            slider advances forward. It suits a stack being flicked through rather than a track being
+            scrubbed. Backwards itself is untouched - <code>AllowSlidePrev</code> is still true, so Prev and
+            the arrows work normally. That is the whole difference from <em>Forward only</em>, which removes
+            backwards outright.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">
+                    Drag backwards: the slider still goes <em>forward</em>. Press Prev: it goes back, which
+                    is what <em>Forward only</em> will not do.
+                </p>
+                <Swiper @ref="_oneWaySwiper"
+                        Options="_oneWayOptions"
+                        OnSlideChange="index => Record(_oneWayLog, index)"
+                        data-testid="one-way-swiper">
+                    <DemoSlides />
+                </Swiper>
+                <div style="display:flex;gap:8px">
+                    <button class="demo-button" data-testid="one-way-prev" @onclick="() => _oneWaySwiper!.SlidePrev()">Prev</button>
+                    <button class="demo-button" data-testid="one-way-next" @onclick="() => _oneWaySwiper!.SlideNext()">Next</button>
+                </div>
+                <SwiperState Json="@_oneWayLog.ToJson()" TestId="one-way-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Free mode">
+        <Description>
+            <code>FreeMode</code> stops the slider snapping to a slide: it keeps the position the drag left it
+            at and glides to a stop. <code>Sticky</code> brings the snap back once the glide ends.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_freeModeOptions" data-testid="free-mode-swiper">
+                    <DemoSlides Count="8" Height="140" />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Auto height">
+        <Description>
+            <code>AutoHeight</code> makes the track follow the active slide's own height. The wrapper keeps
+            that measurement live rather than measuring once at init, so content arriving later - an image
+            decoding, an async load resolving - resizes the track instead of being clipped by it.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">Each slide is a different height; the track follows the active one.</p>
+                <Swiper Options="_autoHeightOptions"
+                        OnSlideChange="index => Record(_autoHeightLog, index)"
+                        data-testid="auto-height-swiper">
+                    @foreach (var (label, height, color) in _unevenHeights)
+                    {
+                        <SwiperSlide>
+                            <div class="demo-slide" style="background:@color;height:@(height)px">@label</div>
+                        </SwiperSlide>
+                    }
+                </Swiper>
+                <SwiperState Json="@_autoHeightLog.ToJson()" TestId="auto-height-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="CSS mode">
+        <Description>
+            <code>CssMode</code> moves the slider onto the browser's native CSS Scroll Snap API, so scrolling
+            runs on the compositor thread. Swiper's own trade-offs apply: mouse-drag does not work (wheel,
+            trackpad and touch do), <code>Speed</code> is ignored, transition events do not fire, and it is not
+            compatible with <code>Loop</code>. Programmatic moves are animated by the wrapper, because Swiper
+            drives them with a native smooth scroll that scroll-snap cancels.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper @ref="_cssModeSwiper"
+                        Options="_cssModeOptions"
+                        OnSlideChange="index => Record(_cssModeLog, index)"
+                        data-testid="css-mode-swiper">
+                    <DemoSlides Count="5" />
+                </Swiper>
+                <button class="demo-button" data-testid="css-mode-to-third" @onclick="() => _cssModeSwiper!.SlideTo(2)">To third slide</button>
+                <SwiperState Json="@_cssModeLog.ToJson()" TestId="css-mode-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Breakpoints">
+        <Description>
+            <code>Breakpoints</code> takes a full <code>SwiperOptions</code> per key, because Swiper accepts the
+            same shape at a breakpoint. Keys are widths in px, or ratios like <code>"@@1.5"</code>. Not every
+            parameter can change responsively - Swiper ignores the ones it cannot re-apply.
+        </Description>
+        <Template>
+            <div style="width: 100%; max-width: 900px;">
+                <p class="demo-hint">
+                    Resize the canvas: one slide below 480px, two below 800px, three above.
+                    <code>OnBreakpoint</code> reports which key is in force.
+                </p>
+                <Swiper Options="_breakpointOptions"
+                        OnBreakpoint='key => RecordValue(_breakpointLog, "breakpoint", key)'
+                        data-testid="breakpoint-swiper">
+                    <DemoSlides Count="6" Height="140" />
+                </Swiper>
+                <SwiperState Json="@_breakpointLog.ToJson()" TestId="breakpoint-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Right to left">
+        <Description>
+            Swiper follows the document's own direction. Put <code>dir="rtl"</code> on the slider - or inherit
+            it from an ancestor - and the track, the navigation arrows and the pagination all reverse.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_rtlOptions" dir="rtl" data-testid="rtl-swiper">
+                    <DemoSlides />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Watch overflow">
+        <Description>
+            <code>WatchOverflow</code> disables the slider and hides its navigation when the slides all fit,
+            rather than leaving dead controls on screen. <code>OnLock</code> and <code>OnUnlock</code> report it.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">Two slides fit at once, so with two slides there is nothing to slide.</p>
+                <Swiper @ref="_lockSwiper"
+                        Options="_lockOptions"
+                        OnLock='() => Record(_lockLog, "lock")'
+                        OnUnlock='() => Record(_lockLog, "unlock")'
+                        data-testid="lock-swiper">
+                    <DemoSlides Count="@_lockSlideCount" Height="120" />
+                </Swiper>
+                <button class="demo-button" data-testid="lock-toggle" @onclick="ToggleLockSlides">
+                    @(_lockSlideCount == 2 ? "Add slides" : "Remove slides")
+                </button>
+                <SwiperState Json="@_lockLog.ToJson()" TestId="lock-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Slide to clicked slide">
+        <Description>
+            <code>SlideToClickedSlide</code> turns the slides themselves into navigation, and
+            <code>GrabCursor</code> tells the pointer the track can be dragged.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_clickToSlideOptions"
+                        OnSlideChange="index => Record(_clickLog, index)"
+                        OnClick='args => RecordValue(_clickLog, "click", args.SlideIndex)'
+                        data-testid="click-swiper">
+                    <DemoSlides Count="5" Height="140" />
+                </Swiper>
+                <SwiperState Json="@_clickLog.ToJson()" TestId="click-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Two-way binding">
+        <Description>
+            <code>@@bind-ActiveIndex</code> is the whole API for the common case: setting it moves the slider,
+            and the slider moving sets it. The index is always the one into your own collection, so it stays
+            right in <code>Loop</code> mode too. A bound value supplied before the slider initializes becomes
+            the slide it opens on, rather than a visible jump from slide 0.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">
+                    No <code>@@ref</code>, no callback: the buttons move <code>_boundIndex</code> and the
+                    slider follows; swiping moves the slider and <code>_boundIndex</code> follows.
+                </p>
+                <Swiper @bind-ActiveIndex="_boundIndex" Options="_bindingOptions" data-testid="binding-swiper">
+                    <DemoSlides Count="5" />
+                </Swiper>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <button class="demo-button" data-testid="binding-prev" @onclick="() => _boundIndex--" disabled="@(_boundIndex == 0)">Prev</button>
+                    <button class="demo-button" data-testid="binding-next" @onclick="() => _boundIndex++" disabled="@(_boundIndex == 4)">Next</button>
+                    <button class="demo-button" data-testid="binding-last" @onclick="() => _boundIndex = 4">Last</button>
+                </div>
+                <SwiperState Json="@BoundStateJson" TestId="binding-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Reactive options">
+        <Description>
+            Changing <code>Options</code> pushes the members that moved to the live slider. Swiper re-applies
+            most parameters on update; the ones it only reads while initializing are ignored, and say so in the
+            browser console rather than failing silently.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">
+                    The button rebuilds the options record with a different <code>SlidesPerView</code>. The
+                    slider re-lays out without being torn down - the active slide stays where it was.
+                </p>
+                <Swiper Options="_reactiveOptions" data-testid="reactive-swiper">
+                    <DemoSlides Count="8" Height="120" />
+                </Swiper>
+                <button class="demo-button" data-testid="reactive-toggle" @onclick="ToggleSlidesPerView">
+                    Show @(_reactiveOptions.SlidesPerView?.Count == 1 ? "three" : "one") at a time
+                </button>
+                <SwiperState Json="@ReactiveStateJson" TestId="reactive-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Slide state">
+        <Description>
+            A slide's content is handed its own state, so it can render differently while it is the active one -
+            pausing a video on the slides that are not, for instance. The state is derived from the slider's
+            index rather than read back out of Swiper, so it costs no interop.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper @bind-ActiveIndex="_slideStateIndex" Options="_slideStateOptions" data-testid="slide-state-swiper">
+                    @for (var index = 0; index < 4; index++)
+                    {
+                        var slide = index;
+                        <SwiperSlide Index="slide">
+                            <SlideContent Context="state">
+                                <div class="demo-slide" style="background:@(state.IsActive ? "#0ea5a4" : "#94a3b8")">
+                                    <span data-testid="@($"slide-state-{slide}")">
+                                        @(state.IsActive ? "active" : state.IsNext ? "next" : state.IsPrevious ? "previous" : "resting")
+                                    </span>
+                                </div>
+                            </SlideContent>
+                        </SwiperSlide>
+                    }
+                </Swiper>
+                <button class="demo-button" data-testid="slide-state-next" @onclick="() => _slideStateIndex++">Next</button>
             </div>
         </Template>
     </Story>
@@ -103,11 +449,11 @@
             <div style="width: 420px;">
                 <Swiper @ref="_programmaticSwiper"
                         Options="_defaultOptions"
-                        OnSlideChange="OnProgrammaticSlideChange"
-                        OnUserSlideChange="OnProgrammaticUserSlideChange"
-                        OnReady="OnProgrammaticReady"
+                        OnSlideChange="index => Record(_programmaticLog, index)"
+                        OnUserSlideChange="index => RecordUser(_programmaticLog, index)"
+                        OnReady="() => Ready(_programmaticLog)"
                         data-testid="programmatic-swiper">
-                    @Slides()
+                    <DemoSlides />
                 </Swiper>
                 <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
                     <button class="demo-button" data-testid="slide-prev" @onclick="() => _programmaticSwiper!.SlidePrev()">Prev</button>
@@ -119,27 +465,44 @@
         </Template>
     </Story>
 
+    <Story Name="Reading the state">
+        <Description>
+            <code>GetStateAsync()</code> reads everything the underlying Swiper knows about itself in one
+            interop call, rather than a round trip per value - which on Blazor Server is a network hop each.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper @ref="_stateSwiper" Options="_readStateOptions" data-testid="read-state-swiper">
+                    <DemoSlides Count="5" Height="140" />
+                </Swiper>
+                <button class="demo-button" data-testid="read-state" @onclick="ReadState">Read state</button>
+                <SwiperState Json="@_readStateJson" TestId="read-state-panel" />
+            </div>
+        </Template>
+    </Story>
+
     <Story Name="Untyped parameters">
         <Description>
-            <code>SwiperOptions</code> is a typed subset of Swiper's parameters. Anything it does not cover
-            can still be set as a plain attribute on <code>&lt;Swiper&gt;</code>: attributes that do not match
-            a component parameter are forwarded to the underlying <code>&lt;swiper-container&gt;</code>, which
-            reads them as parameters when it initializes. Typed options and attributes can be mixed freely.
+            <code>SwiperOptions</code> covers every parameter Swiper Element accepts, so this is rarely needed -
+            but anything it does not cover can still be set as a plain attribute on <code>&lt;Swiper&gt;</code>:
+            attributes that do not match a component parameter are forwarded to the underlying
+            <code>&lt;swiper-container&gt;</code>, which reads them as parameters when it initializes. Typed
+            options and attributes can be mixed freely.
         </Description>
         <Template>
             <div style="width: 420px;">
                 <p class="demo-hint">
                     <code>SlidesPerView</code> comes from the typed <code>Options</code>, while
-                    <code>slides-per-group</code> and <code>grab-cursor</code> are plain attributes - neither
-                    exists on <code>SwiperOptions</code>. The slider shows two slides and advances two at a time.
+                    <code>slides-per-group</code> and <code>grab-cursor</code> are plain attributes. The slider
+                    shows two slides and advances two at a time.
                 </p>
                 <Swiper Options="_untypedOptions"
-                        OnSlideChange="OnUntypedSlideChange"
-                        OnReady="OnUntypedReady"
+                        OnSlideChange="index => Record(_untypedLog, index)"
+                        OnReady="() => Ready(_untypedLog)"
                         slides-per-group="2"
                         grab-cursor="true"
                         data-testid="untyped-swiper">
-                    @Slides()
+                    <DemoSlides />
                 </Swiper>
                 <SwiperState Json="@_untypedLog.ToJson()" TestId="untyped-state" />
             </div>
@@ -163,11 +526,11 @@
                 </p>
                 <Swiper @ref="_distinctionSwiper"
                         Options="_defaultOptions"
-                        OnSlideChange="OnDistinctionSlideChange"
-                        OnUserSlideChange="OnDistinctionUserSlideChange"
-                        OnReady="OnDistinctionReady"
+                        OnSlideChange="index => Record(_distinctionLog, index)"
+                        OnUserSlideChange="index => RecordUser(_distinctionLog, index)"
+                        OnReady="() => Ready(_distinctionLog)"
                         data-testid="distinction-swiper">
-                    @Slides()
+                    <DemoSlides />
                 </Swiper>
                 <button class="demo-button" data-testid="move-by-code" @onclick="() => _distinctionSwiper!.SlideNext()">Move by code</button>
                 <SwiperState Json="@_distinctionLog.ToJson()" TestId="distinction-state" />
@@ -181,138 +544,219 @@
     private Swiper? _programmaticSwiper;
     private Swiper? _distinctionSwiper;
     private Swiper? _loopSwiper;
+    private Swiper? _rewindSwiper;
+    private Swiper? _cssModeSwiper;
+    private Swiper? _stateSwiper;
+    private Swiper? _lockSwiper;
+    private Swiper? _forwardOnlySwiper;
+    private Swiper? _oneWaySwiper;
 
     private readonly SwiperEventLog _programmaticLog = new();
     private readonly SwiperEventLog _distinctionLog = new();
     private readonly SwiperEventLog _loopLog = new();
     private readonly SwiperEventLog _untypedLog = new();
+    private readonly SwiperEventLog _groupLog = new();
+    private readonly SwiperEventLog _rewindLog = new();
+    private readonly SwiperEventLog _autoHeightLog = new();
+    private readonly SwiperEventLog _cssModeLog = new();
+    private readonly SwiperEventLog _breakpointLog = new();
+    private readonly SwiperEventLog _lockLog = new();
+    private readonly SwiperEventLog _clickLog = new();
+    private readonly SwiperEventLog _forwardOnlyLog = new();
+    private readonly SwiperEventLog _oneWayLog = new();
 
-    private readonly SwiperOptions _untypedOptions = new()
-    {
-        SlidesPerView = 2,
-        SpaceBetween = 16,
-    };
+    private int _boundIndex;
+    private int _slideStateIndex;
+    private int _lockSlideCount = 2;
+    private string _readStateJson = "{}";
 
-    private void OnProgrammaticSlideChange(int index)
+    private void Record(SwiperEventLog log, int index)
     {
-        _programmaticLog.RecordSlideChange(index);
+        log.RecordSlideChange(index);
         StateHasChanged();
     }
 
-    private void OnProgrammaticUserSlideChange(int index)
+    private void Record(SwiperEventLog log, string name)
     {
-        _programmaticLog.RecordUserSlideChange(index);
+        log.Record(name);
         StateHasChanged();
     }
 
-    private void OnProgrammaticReady()
+    private void RecordUser(SwiperEventLog log, int index)
     {
-        _programmaticLog.RecordReady();
+        log.RecordUserSlideChange(index);
         StateHasChanged();
     }
 
-    private void OnDistinctionSlideChange(int index)
+    private void RecordValue(SwiperEventLog log, string name, object? value)
     {
-        _distinctionLog.RecordSlideChange(index);
+        log.Record(name, value);
         StateHasChanged();
     }
 
-    private void OnDistinctionUserSlideChange(int index)
+    private void Ready(SwiperEventLog log)
     {
-        _distinctionLog.RecordUserSlideChange(index);
+        log.RecordReady();
         StateHasChanged();
     }
 
-    private void OnDistinctionReady()
+    private string BoundStateJson => JsonSerializer.Serialize(new { activeIndex = _boundIndex }, _jsonOptions);
+
+    private string ReactiveStateJson =>
+        JsonSerializer.Serialize(new { slidesPerView = _reactiveOptions.SlidesPerView?.Count ?? 1 }, _jsonOptions);
+
+    // camelCase so every state panel reads the same way, whether it is an anonymous object or
+    // a record the library returned.
+    private static readonly JsonSerializerOptions _jsonOptions =
+        new(JsonSerializerDefaults.Web) { WriteIndented = true };
+
+    private void ToggleSlidesPerView()
     {
-        _distinctionLog.RecordReady();
-        StateHasChanged();
+        // A record, so the change is a new instance - which is what the component compares against the
+        // set it last applied.
+        _reactiveOptions = _reactiveOptions with
+        {
+            SlidesPerView = _reactiveOptions.SlidesPerView?.Count == 1 ? 3 : 1
+        };
     }
 
-    private void OnLoopSlideChange(int index)
+    /// <summary>
+    /// Blazor owns the slide elements, and this wrapper leaves Swiper's own MutationObserver off - so a
+    /// change to the collection has to be announced. That is the trade the Observer option documents.
+    /// </summary>
+    private async Task ToggleLockSlides()
     {
-        _loopLog.RecordSlideChange(index);
+        _lockSlideCount = _lockSlideCount == 2 ? 6 : 2;
+
+        // After the re-render, so Swiper measures the slides Blazor has actually written.
         StateHasChanged();
+        await Task.Yield();
+        await _lockSwiper!.Update();
     }
 
-    private void OnUntypedSlideChange(int index)
+    private async Task ReadState()
     {
-        _untypedLog.RecordSlideChange(index);
-        StateHasChanged();
-    }
-
-    private void OnUntypedReady()
-    {
-        _untypedLog.RecordReady();
-        StateHasChanged();
-    }
-
-    private void OnLoopReady()
-    {
-        _loopLog.RecordReady();
+        var state = await _stateSwiper!.GetStateAsync();
+        _readStateJson = JsonSerializer.Serialize(state, _jsonOptions);
         StateHasChanged();
     }
 
     private readonly SwiperOptions _defaultOptions = new();
 
-    private readonly SwiperOptions _spaceBetweenOptions = new()
+    private readonly SwiperOptions _spaceBetweenOptions = new() { SpaceBetween = 24 };
+
+    private readonly SwiperOptions _multiPerViewOptions = new() { SlidesPerView = 2, SpaceBetween = 16 };
+
+    private readonly SwiperOptions _autoPerViewOptions = new()
     {
-        SpaceBetween = 24,
+        SlidesPerView = SwiperSlidesPerView.Auto,
+        SpaceBetween = 16
     };
 
-    private readonly SwiperOptions _multiPerViewOptions = new()
+    private readonly SwiperOptions _slidesPerGroupOptions = new()
     {
-        SlidesPerView = 2,
-        SpaceBetween = 16,
+        SlidesPerView = 3,
+        SlidesPerGroup = 3,
+        SpaceBetween = 12,
+        Navigation = true
+    };
+
+    private readonly SwiperOptions _centeredOptions = new()
+    {
+        SlidesPerView = 1.6,
+        CenteredSlides = true,
+        SpaceBetween = 16
     };
 
     private readonly SwiperOptions _verticalOptions = new()
     {
         Direction = SwiperDirection.Vertical,
-        SpaceBetween = 16,
+        SpaceBetween = 16
     };
 
-    private readonly SwiperOptions _loopOptions = new()
+    private readonly SwiperOptions _loopOptions = new() { Loop = true, SpaceBetween = 16 };
+
+    private readonly SwiperOptions _rewindOptions = new() { Rewind = true, SpaceBetween = 16 };
+
+    private readonly SwiperOptions _paginationOptions = new() { Pagination = true, SpaceBetween = 16 };
+
+    private readonly SwiperOptions _navigationOptions = new() { Navigation = true, SpaceBetween = 16 };
+
+    private readonly SwiperOptions _scrollbarOptions = new()
     {
-        Loop = true,
-        SpaceBetween = 16,
+        SlidesPerView = 2.5,
+        SpaceBetween = 12,
+        Scrollbar = new SwiperScrollbarOptions { Draggable = true, Hide = false }
     };
 
-    private readonly SwiperOptions _paginationOptions = new()
+    private readonly SwiperOptions _forwardOnlyOptions = new() { AllowSlidePrev = false, SpaceBetween = 16 };
+
+    private readonly SwiperOptions _oneWayOptions = new() { OneWayMovement = true, SpaceBetween = 16 };
+
+    private readonly SwiperOptions _freeModeOptions = new()
     {
-        Pagination = true,
-        SpaceBetween = 16,
+        SlidesPerView = 2.5,
+        SpaceBetween = 12,
+        FreeMode = new SwiperFreeModeOptions { Momentum = true, MomentumRatio = 1.5 }
     };
 
-    private readonly SwiperOptions _navigationOptions = new()
-    {
-        Navigation = true,
-        SpaceBetween = 16,
-    };
+    private readonly SwiperOptions _autoHeightOptions = new() { AutoHeight = true, SpaceBetween = 16 };
 
-    private readonly SwiperOptions _forwardOnlyOptions = new()
-    {
-        AllowSlidePrev = false,
-        SpaceBetween = 16,
-    };
+    private readonly SwiperOptions _cssModeOptions = new() { CssMode = true, SpaceBetween = 16 };
 
-    private readonly SlideModel[] _slides =
-    [
-        new("Slide 1", "#0ea5a4"),
-        new("Slide 2", "#6366f1"),
-        new("Slide 3", "#f59e0b"),
-        new("Slide 4", "#ef4444"),
-    ];
-
-    private RenderFragment Slides() => __builder =>
+    private readonly SwiperOptions _breakpointOptions = new()
     {
-        foreach (var slide in _slides)
+        SpaceBetween = 12,
+        Breakpoints = new Dictionary<string, SwiperOptions>
         {
-            <SwiperSlide>
-                <div class="demo-slide" style="background:@slide.Color">@slide.Label</div>
-            </SwiperSlide>
+            ["480"] = new() { SlidesPerView = 2 },
+            ["800"] = new() { SlidesPerView = 3 }
         }
     };
 
-    private sealed record SlideModel(string Label, string Color);
+    private readonly SwiperOptions _rtlOptions = new() { Navigation = true, Pagination = true, SpaceBetween = 16 };
+
+    private readonly SwiperOptions _lockOptions = new()
+    {
+        SlidesPerView = 2,
+        SpaceBetween = 12,
+        Navigation = true,
+        WatchOverflow = true
+    };
+
+    private readonly SwiperOptions _clickToSlideOptions = new()
+    {
+        SlidesPerView = 2.2,
+        SpaceBetween = 12,
+        SlideToClickedSlide = true,
+        GrabCursor = true,
+        CenteredSlides = true
+    };
+
+    private readonly SwiperOptions _bindingOptions = new() { SpaceBetween = 16, Pagination = true };
+
+    private readonly SwiperOptions _slideStateOptions = new() { SlidesPerView = 2.2, SpaceBetween = 12 };
+
+    private readonly SwiperOptions _readStateOptions = new() { SlidesPerView = 2, SpaceBetween = 12, WatchSlidesProgress = true };
+
+    private readonly SwiperOptions _untypedOptions = new() { SlidesPerView = 2, SpaceBetween = 16 };
+
+    private SwiperOptions _reactiveOptions = new() { SlidesPerView = 1, SpaceBetween = 12 };
+
+    private readonly (string Label, int Width, string Color)[] _unevenSlides =
+    [
+        ("Narrow", 120, "#0ea5a4"),
+        ("Wide", 260, "#6366f1"),
+        ("Medium", 180, "#f59e0b"),
+        ("Wide", 240, "#ef4444"),
+        ("Narrow", 110, "#8b5cf6")
+    ];
+
+    private readonly (string Label, int Height, string Color)[] _unevenHeights =
+    [
+        ("Short", 120, "#0ea5a4"),
+        ("Tall", 280, "#6366f1"),
+        ("Medium", 190, "#f59e0b"),
+        ("Tallest", 340, "#ef4444")
+    ];
 }

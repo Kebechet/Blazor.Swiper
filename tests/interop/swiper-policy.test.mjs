@@ -3,25 +3,35 @@ import test from "node:test";
 
 import {
     applicableOptions,
+    changedOptions,
+    isInitOnlyParam,
     optionalSpeed,
     navigationMode,
     isIntentArmed,
     shouldDisarmIntent,
     shouldReanchor,
     scrollPlan,
-    scrollPositionAt
+    scrollPositionAt,
+    isInitPhaseEvent,
+    isHighFrequencyEvent,
+    shouldSendThrottledEvent,
+    extractPaginationTemplates,
+    renderTemplate,
+    formatFractionNumber
 } from "../../src/Blazor.Swiper/wwwroot/swiper-policy.js";
+
+/** The applied options as an object, which reads better than an entry array in an assertion. */
+function applied(options) {
+    return Object.fromEntries(applicableOptions(options));
+}
 
 test("ApplicableOptions_UnsetMember_IsSkippedSoSwiperKeepsItsOwnDefault", () => {
     // Arrange - SwiperOptions serializes an unset member as null; applying it would override
     // Swiper's default with nothing.
     const options = { slidesPerView: 2, spaceBetween: null, initialSlide: undefined };
 
-    // Act
-    const applied = applicableOptions(options);
-
-    // Assert
-    assert.deepEqual(applied, [["slidesPerView", 2]]);
+    // Act & Assert
+    assert.deepEqual(applied(options), { slidesPerView: 2, observer: false });
 });
 
 test("ApplicableOptions_FalseOrZero_IsAppliedRatherThanSkipped", () => {
@@ -29,16 +39,58 @@ test("ApplicableOptions_FalseOrZero_IsAppliedRatherThanSkipped", () => {
     // filter, and every falsy value here is a legitimate Swiper setting.
     const options = { loop: false, spaceBetween: 0, wrapperClass: "" };
 
-    // Act
-    const applied = applicableOptions(options);
-
-    // Assert
-    assert.deepEqual(applied, [["loop", false], ["spaceBetween", 0], ["wrapperClass", ""]]);
+    // Act & Assert
+    assert.deepEqual(applied(options), { loop: false, spaceBetween: 0, wrapperClass: "", observer: false });
 });
 
-test("ApplicableOptions_NoOptionsAtAll_YieldsNothing", () => {
-    assert.deepEqual(applicableOptions(null), []);
-    assert.deepEqual(applicableOptions(undefined), []);
+test("ApplicableOptions_NoOptionsAtAll_StillTurnsSwiperElementsObserverOff", () => {
+    // Swiper Element spreads {observer: true} in ahead of the caller's parameters, so leaving the
+    // member unset is not "off" the way it is everywhere else - it has to be said explicitly.
+    assert.deepEqual(applied(null), { observer: false });
+    assert.deepEqual(applied(undefined), { observer: false });
+});
+
+test("ApplicableOptions_ObserverAskedForExplicitly_IsLeftAlone", () => {
+    assert.equal(applied({ observer: true }).observer, true);
+});
+
+test("ApplicableOptions_UnsetMemberOfAModulesOptions_IsDroppedToo", () => {
+    // Arrange - a module's options are their own object, so an unset member arrives as
+    // pagination.type = null and would blank Swiper's default just as effectively as a top-level one.
+    const options = { pagination: { clickable: true, type: null, dynamicBullets: undefined } };
+
+    // Act & Assert
+    assert.deepEqual(applied(options).pagination, { clickable: true });
+});
+
+test("ApplicableOptions_ModuleOptionsLeftEmptyByCleaning_StillEnableTheModule", () => {
+    // Swiper Element reads the mere presence of a module's options as "module wanted", which is
+    // exactly what `Pagination = new()` means - so an empty object must survive the cleaning.
+    assert.deepEqual(applied({ pagination: { type: null } }).pagination, {});
+});
+
+test("ApplicableOptions_ModuleDisabledExplicitly_CollapsesToFalseRatherThanAnObject", () => {
+    // Handing over {enabled:false} would enable the module: the element treats any object as
+    // "module wanted" and builds its elements before the module declines to run, leaving the
+    // pagination container and both navigation buttons behind.
+    assert.equal(applied({ pagination: { enabled: false } }).pagination, false);
+    assert.equal(applied({ navigation: { enabled: false, hideOnClick: true } }).navigation, false);
+});
+
+test("ApplicableOptions_ModuleEnabledExplicitly_StaysAnObject", () => {
+    assert.deepEqual(applied({ pagination: { enabled: true } }).pagination, { enabled: true });
+});
+
+test("ApplicableOptions_ArrayValues_SurviveIntact", () => {
+    // creativeEffect's transforms are arrays of numbers, and injectStyles is an array of strings.
+    const options = { injectStyles: ["a", "b"], creativeEffect: { prev: { translate: [0, 0, -400] } } };
+
+    // Act
+    const result = applied(options);
+
+    // Assert
+    assert.deepEqual(result.injectStyles, ["a", "b"]);
+    assert.deepEqual(result.creativeEffect.prev.translate, [0, 0, -400]);
 });
 
 test("OptionalSpeed_NullFromDotNet_BecomesUndefinedSoSwiperUsesItsConfiguredSpeed", () => {
@@ -173,4 +225,155 @@ test("ScrollPositionAt_PastTheDuration_LandsExactlyOnTargetWithoutOvershooting",
 test("ScrollPositionAt_Midway_IsAlreadyMostOfTheWayBecauseTheEaseIsFrontLoaded", () => {
     // easeOutCubic(0.5) = 1 - 0.5^3 = 0.875
     assert.equal(scrollPositionAt(0, 100, 150, 300), 87.5);
+});
+
+test("ChangedOptions_MemberThatMoved_IsTheOnlyOneReported", () => {
+    // Arrange
+    const previous = { slidesPerView: 1, spaceBetween: 16, observer: false };
+    const next = { slidesPerView: 3, spaceBetween: 16 };
+
+    // Act
+    const changes = changedOptions(previous, next);
+
+    // Assert
+    assert.deepEqual(changes, [["slidesPerView", 3]]);
+});
+
+test("ChangedOptions_NestedModuleOptionsRebuiltButUnchanged_AreNotReported", () => {
+    // A record is a fresh instance on every render, so identity says "changed" when nothing moved.
+    const previous = { pagination: { clickable: true }, observer: false };
+    const next = { pagination: { clickable: true } };
+
+    assert.deepEqual(changedOptions(previous, next), []);
+});
+
+test("ChangedOptions_NestedMemberThatMoved_ReportsTheWholeModuleObject", () => {
+    // Swiper takes a module's parameters as one object, so the whole thing is what gets assigned.
+    const previous = { pagination: { clickable: true }, observer: false };
+    const next = { pagination: { clickable: true, dynamicBullets: true } };
+
+    assert.deepEqual(changedOptions(previous, next), [["pagination", { clickable: true, dynamicBullets: true }]]);
+});
+
+test("ChangedOptions_MemberThatDisappeared_IsNotReported", () => {
+    // Swiper cannot unset a parameter back to its default, so reporting it would push undefined and
+    // blank the value instead of restoring anything.
+    const previous = { slidesPerView: 3, observer: false };
+    const next = {};
+
+    assert.deepEqual(changedOptions(previous, next), []);
+});
+
+test("ChangedOptions_NoPreviousSetAtAll_ReportsEverything", () => {
+    assert.deepEqual(changedOptions(null, { loop: true }), [["loop", true], ["observer", false]]);
+});
+
+test("IsInitOnlyParam_ParametersSwiperOnlyReadsWhileInitializing_AreRecognised", () => {
+    // Assigning one of these reaches Swiper and does nothing, so the wrapper says so out loud.
+    assert.equal(isInitOnlyParam("effect"), true);
+    assert.equal(isInitOnlyParam("cssMode"), true);
+    assert.equal(isInitOnlyParam("initialSlide"), true);
+    assert.equal(isInitOnlyParam("keyboard"), true);
+});
+
+test("IsInitOnlyParam_ParametersSwiperReAppliesOnUpdate_AreNot", () => {
+    assert.equal(isInitOnlyParam("slidesPerView"), false);
+    assert.equal(isInitOnlyParam("spaceBetween"), false);
+    assert.equal(isInitOnlyParam("loop"), false);
+    assert.equal(isInitOnlyParam("pagination"), false);
+});
+
+test("IsInitPhaseEvent_TheThreeEventsRaisedFromInsideInitialize_NeedSubscribingFirst", () => {
+    // Every other listener is attached after initialize() so that Swiper's opening announcement is
+    // not forwarded as news. These three ARE the initialization, so they get the exception.
+    assert.equal(isInitPhaseEvent("beforeInit"), true);
+    assert.equal(isInitPhaseEvent("init"), true);
+    assert.equal(isInitPhaseEvent("afterInit"), true);
+});
+
+test("IsInitPhaseEvent_EverythingElse_KeepsTheAfterInitializeOrdering", () => {
+    assert.equal(isInitPhaseEvent("slideChange"), false);
+    assert.equal(isInitPhaseEvent("reachEnd"), false);
+    assert.equal(isInitPhaseEvent("transitionEnd"), false);
+});
+
+test("IsHighFrequencyEvent_TheOnesRaisedPerAnimationFrame_AreThrottled", () => {
+    // On Blazor Server each delivery is a network round trip, so a per-frame event subscribed
+    // without a throttle is a round trip per frame.
+    for (const name of ["progress", "setTranslate", "setTransition", "sliderMove", "touchMove", "autoplayTimeLeft", "zoomChange"]) {
+        assert.equal(isHighFrequencyEvent(name), true, `${name} should be throttled`);
+    }
+});
+
+test("IsHighFrequencyEvent_TheOnesRaisedAtAMoment_AreDeliveredAsTheyHappen", () => {
+    for (const name of ["slideChange", "reachEnd", "transitionEnd", "autoplayStart", "tap"]) {
+        assert.equal(isHighFrequencyEvent(name), false, `${name} should not be throttled`);
+    }
+});
+
+test("ShouldSendThrottledEvent_TheFirstEventOfABurst_GoesImmediately", () => {
+    // Leading edge, so a host watching progress sees the drag start rather than waiting an interval.
+    assert.equal(shouldSendThrottledEvent(null, 1000, 16), true);
+    assert.equal(shouldSendThrottledEvent(undefined, 1000, 16), true);
+});
+
+test("ShouldSendThrottledEvent_WithinTheInterval_IsHeldBack", () => {
+    assert.equal(shouldSendThrottledEvent(1000, 1008, 16), false);
+});
+
+test("ShouldSendThrottledEvent_OnceTheIntervalHasPassed_GoesAgain", () => {
+    assert.equal(shouldSendThrottledEvent(1000, 1016, 16), true);
+    assert.equal(shouldSendThrottledEvent(1000, 1200, 16), true);
+});
+
+test("ShouldSendThrottledEvent_NoThrottleConfigured_SendsEverything", () => {
+    assert.equal(shouldSendThrottledEvent(1000, 1001, 0), true);
+    assert.equal(shouldSendThrottledEvent(1000, 1001, null), true);
+});
+
+test("ShouldSendThrottledEvent_ABurstStartingAtTimeZero_IsNotMistakenForOneAlreadySent", () => {
+    // The distinction between "never sent" and "sent at time 0" is why this is a null check rather
+    // than a truthiness one - the same reason isIntentArmed is.
+    assert.equal(shouldSendThrottledEvent(0, 1, 16), false);
+    assert.equal(shouldSendThrottledEvent(null, 1, 16), true);
+});
+
+test("ExtractPaginationTemplates_TheWrappersOwnMembers_AreSeparatedFromSwipersParameters", () => {
+    // Arrange - leaving the templates in would set parameters Swiper has never heard of, and make
+    // the reactive diff report a change every time one of them was set.
+    const pagination = { clickable: true, type: "bullets", renderBulletTemplate: "<b>{{index}}</b>", fractionMinimumDigits: 2 };
+
+    // Act
+    const { templates, parameters } = extractPaginationTemplates(pagination);
+
+    // Assert
+    assert.deepEqual(parameters, { clickable: true, type: "bullets" });
+    assert.deepEqual(templates, { renderBulletTemplate: "<b>{{index}}</b>", fractionMinimumDigits: 2 });
+});
+
+test("ExtractPaginationTemplates_NoPaginationAtAll_IsLeftAlone", () => {
+    assert.deepEqual(extractPaginationTemplates(null), { templates: {}, parameters: null });
+    assert.deepEqual(extractPaginationTemplates(true), { templates: {}, parameters: true });
+});
+
+test("RenderTemplate_Placeholders_AreFilledIn", () => {
+    const rendered = renderTemplate("<span class='{{className}}'>{{index}}</span>", { className: "bullet", index: 3 });
+
+    assert.equal(rendered, "<span class='bullet'>3</span>");
+});
+
+test("RenderTemplate_AnUnknownPlaceholder_IsLeftVisibleRatherThanBlanked", () => {
+    // A typo that silently disappears is a typo nobody finds.
+    assert.equal(renderTemplate("{{index}} of {{ttoal}}", { index: 1 }), "1 of {{ttoal}}");
+});
+
+test("FormatFractionNumber_APaddingWidth_ZeroPadsTheNumber", () => {
+    assert.equal(formatFractionNumber(3, 2), "03");
+    assert.equal(formatFractionNumber(12, 2), "12");
+});
+
+test("FormatFractionNumber_NoPaddingAsked_LeavesTheNumberAsItWas", () => {
+    // Swiper keeps its own formatting rather than being handed a formatter that pads to nothing.
+    assert.equal(formatFractionNumber(3, null), 3);
+    assert.equal(formatFractionNumber(3, 1), 3);
 });

@@ -11,12 +11,15 @@ as a static web asset - there is no npm step, no CDN and no `<script>` tag for c
 | Path | What it is |
 |---|---|
 | `src/Blazor.Swiper/` | The package. RCL, `Microsoft.NET.Sdk.Razor`, namespace `Kebechet.Blazor.Swiper` |
+| `src/Blazor.Swiper/Options/` | `SwiperOptions` and the 22 module option records, the enums and the two union structs. One namespace, folders only for shape |
+| `src/Blazor.Swiper/Events/` | The 76 `EventCallback` parameters, the single inbound dispatcher, and the payload records |
+| `src/Blazor.Swiper/Swiper.Methods.cs` | The imperative surface and the module sub-controllers |
 | `src/Blazor.Swiper/wwwroot/swiper-element-bundle.min.js` | Vendored upstream bundle, pinned. Never swap for a CDN reference |
 | `src/Blazor.Swiper/wwwroot/swiper-interop.js` | The interop module - the JS side of every call and event. Wiring only |
 | `src/Blazor.Swiper/wwwroot/swiper-policy.js` | The decisions behind that wiring. Touches neither Swiper nor the DOM, so node can test it |
 | `demo/` | BlazingStory storybook. Also the app the e2e suite drives |
 | `tests/interop/` | `node --test` suite over the two JS modules |
-| `tests/Blazor.Swiper.Tests/` | bUnit + xUnit v3 unit tests, plus the packaging contract |
+| `tests/Blazor.Swiper.Tests/` | bUnit + xUnit v3 unit tests, plus the packaging and surface-coverage contracts |
 | `tests/Blazor.Swiper.E2E/` | Playwright tests driving real Chrome |
 
 Style follows the global Kebechet conventions (no `#region`, LINQ one method per line,
@@ -75,12 +78,57 @@ touches: a decision → `tests/interop`; a parameter or callback wiring question
 involving real layout, pointers or timing → e2e. A fix verified by looking at the storybook is not
 verified.
 
+## Keeping the surface complete
+
+`SwiperSurfaceTests` is what makes "covers all of Swiper" a fact rather than a claim, and it is the
+first place to look when the bundle is re-vendored:
+
+- The **parameter** half reads Swiper Element's own parameter list straight out of the minified
+  bundle (found by the `"_slidesPerView"` member, since minification renames the variable holding it)
+  and fails if a parameter has no `SwiperOptions` member - or if a member matches no parameter, which
+  catches a typo that would otherwise serialize to a key Swiper silently ignores. A parameter that
+  genuinely should not be exposed goes in `IntentionallyUnexposedParameters` **with its reason**.
+- The **event** half is a hand-kept list, because the events cannot be read out of the bundle: they
+  are raised through per-module aliases of `emit`, and several are emitted as space-separated groups
+  (`"reachEnd toEdge"`), so there is no literal to find. Refresh it from Swiper's published
+  `types/events.d.ts` when re-vendoring.
+
+`swiper-interop.module.test.mjs` covers the same ground for the JS boundary: it greps every interop
+identifier out of the C# source and asserts the module exports each one, and that it exports nothing
+the component never calls.
+
 ## Library gotchas, learned the hard way
 
-**Attach listeners after `initialize()`, never before.** Swiper announces its starting position from
-inside `init()` (`runCallbacksOnInit` defaults on), and that is not news to the host - it is the
-position the host just asked for. Forwarding it makes every consumer write an "ignore the first one"
-guard, and in a two-way binding it reports slide 0 back before the host has settled.
+**Attach listeners after `initialize()`, never before - except for exactly three.** Swiper announces
+its starting position from inside `init()` (`runCallbacksOnInit` defaults on), and that is not news
+to the host - it is the position the host just asked for. Forwarding it makes every consumer write an
+"ignore the first one" guard, and in a two-way binding it reports slide 0 back before the host has
+settled. `beforeInit`, `init` and `afterInit` **are** the initialization, so a listener attached
+afterwards never hears them at all; `isInitPhaseEvent` owns that exception.
+
+**`element.swiper` does not exist yet while those three fire.** The element assigns
+`this.swiper = new Swiper(...)`, and all three are emitted from inside that constructor - so a
+handler that opens with `if (!element.swiper) return`, which every other handler correctly does,
+silently drops exactly the events the early attach exists to catch.
+
+**A module options object without `enabled` means enabled.** Swiper's own parameter merge sets
+`enabled = true` when the caller passes an object for a module whose defaults carry `enabled` and
+that object does not, so `Autoplay = new() { Delay = 2000 }` plays. The corollary is that
+`{enabled: false}` must be collapsed to a literal `false` before it reaches the element: any object
+is "module wanted", so the element builds the pagination container and both navigation buttons first
+and the module declines to run second, leaving the markup behind.
+
+**Nulls have to be dropped recursively.** A module's options are their own object, so an unset member
+arrives as `pagination.type = null` and would blank Swiper's default exactly as effectively as a
+top-level null would. An object left *empty* by that cleaning still has to survive - the element
+reads the mere presence of a module's options as "module wanted", which is what `Pagination = new()`
+means.
+
+**`injectStyles` lands in `adoptedStyleSheets`, not in a `<style>`.** The element takes the
+constructable-stylesheet path wherever `CSSStyleSheet` exists, which is everywhere that matters. It
+is also declared as a class field on the element, which shadows the prototype accessor the other
+parameters use - so assigning it writes the field the renderer actually reads, and never routes
+through the element's post-init update path. It is init-only either way.
 
 **`realIndex`, never `activeIndex`.** In loop mode Swiper duplicates slides, so `activeIndex` counts
 positions the host's collection does not have. Everything crossing the interop boundary is the
@@ -129,11 +177,28 @@ only resolves under `_content/Kebechet.Blazor.Swiper/` because both ship from th
 release and the fourth is this wrapper's own revision, so re-vendoring and bumping go together.
 `PackagingTests` reads the bundle banner and fails if the two drift.
 
+**A generic `ChildContent` collides with every enclosing template.** Razor gives each templated
+component's content an implicit `context`, so a `RenderFragment<T>` `ChildContent` on `SwiperSlide`
+makes every slide inside another templated component - a story `Template`, a `Virtualize`, a layout -
+fail to compile until the caller names it. Per-slide state is therefore a *second* parameter,
+`SlideContent`, and plain content pays nothing for a feature it does not use.
+
+**Swiper's zoom needs an actual image.** The module resolves an `img`/`svg`/`canvas`/`picture` inside
+the zoom container and does nothing at all without one, so a slide of coloured `div` will not zoom
+and reads as a broken option rather than a missing image.
+
 ## Storybook gotchas
 
 - Story ids are `{title}--{story name}`, lowercased with spaces replaced by dashes:
   `[Stories("Components/Swiper")]` + `<Story Name="Loop">` → `components-swiper--loop`. The e2e suite
   addresses stories by that id, so renaming a story breaks it.
+- Five files, one per section: `Swiper.stories.razor` (core behaviours), `SwiperEffects`,
+  `SwiperModules`, `SwiperEvents` (the event lab and the throttle comparison) and `SwiperRecipes`
+  (the compositions - gallery, synced sliders, wizard, hero). `DemoSlides.razor` renders the slides
+  most of them use; it deliberately emits no element of its own, so the `swiper-slide` elements stay
+  direct children of the container.
+- State panels are serialized with `JsonSerializerDefaults.Web`, so every panel reads camelCase
+  whether it holds an anonymous object or a record the library returned.
 - `<Description>` renders **only** on the Docs tab - `DocsPage.razor` is its sole consumer. Anything
   a reader needs while looking at the canvas has to be in the canvas markup too, which is what the
   `.demo-hint` paragraphs are for.

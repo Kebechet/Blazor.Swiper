@@ -192,7 +192,7 @@ public sealed class SwiperTests : IDisposable
     }
 
     [Fact]
-    public async Task OnTransitionEndInternal_WhenInvoked_RaisesOnTransitionEnd()
+    public async Task OnSwiperEventInternal_TransitionEnd_RaisesOnTransitionEnd()
     {
         // Arrange
         var hasSettled = false;
@@ -200,14 +200,14 @@ public sealed class SwiperTests : IDisposable
             .Add(x => x.OnTransitionEnd, EventCallback.Factory.Create(this, () => hasSettled = true)));
 
         // Act
-        await cut.InvokeAsync(() => cut.Instance.OnTransitionEndInternal());
+        await cut.InvokeAsync(() => cut.Instance.OnSwiperEventInternal("transitionEnd", "null"));
 
         // Assert
         hasSettled.ShouldBeTrue();
     }
 
     [Fact]
-    public async Task OnReachEndInternal_WhenInvoked_RaisesOnReachEnd()
+    public async Task OnSwiperEventInternal_ReachEnd_RaisesOnReachEnd()
     {
         // Arrange
         var hasReachedEnd = false;
@@ -215,7 +215,7 @@ public sealed class SwiperTests : IDisposable
             .Add(x => x.OnReachEnd, EventCallback.Factory.Create(this, () => hasReachedEnd = true)));
 
         // Act
-        await cut.InvokeAsync(() => cut.Instance.OnReachEndInternal());
+        await cut.InvokeAsync(() => cut.Instance.OnSwiperEventInternal("reachEnd", "null"));
 
         // Assert
         hasReachedEnd.ShouldBeTrue();

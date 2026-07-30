@@ -89,3 +89,33 @@ body {
     font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
     white-space: pre-wrap;
 }
+
+/* Parallax stories: the layers inside a slide that move at their own rate. */
+.demo-parallax {
+    flex-direction: column;
+    gap: 8px;
+    text-align: center;
+    padding: 0 24px;
+}
+
+.demo-parallax-title {
+    font: 700 28px system-ui, sans-serif;
+}
+
+.demo-parallax-text {
+    max-width: 420px;
+    font: 400 15px/1.4 system-ui, sans-serif;
+}
+
+/* The navigation arrows live in the element's shadow DOM, so they are only reachable from here
+   through the CSS parts Swiper Element exposes. Anything deeper - the pagination bullets, for
+   instance - needs SwiperOptions.InjectStyles instead. */
+.demo-tinted-nav::part(button-prev),
+.demo-tinted-nav::part(button-next) {
+    color: #0ea5a4;
+}
+
+.demo-thumb {
+    opacity: 0.45;
+    transition: opacity 150ms ease;
+}

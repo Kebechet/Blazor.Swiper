@@ -1,0 +1,618 @@
+@attribute [Stories("Components/Swiper/Modules")]
+
+<Stories TComponent="Swiper">
+
+    <Story Name="Autoplay">
+        <Description>
+            <code>@@bind-IsAutoplayRunning</code> is the whole play/pause button. Autoplay also stops
+            <em>itself</em> - on interaction and at the last slide - and the binding follows that, which is
+            what a one-way flag on the host could not do. <code>OnAutoplayTimeLeft</code> drives the
+            countdown; it fires per animation frame, so it is one of the events
+            <code>EventThrottle</code> applies to.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper @bind-IsAutoplayRunning="_isPlaying"
+                        Options="_autoplayOptions"
+                        EventThrottle="TimeSpan.FromMilliseconds(100)"
+                        OnAutoplayTimeLeft="OnTimeLeft"
+                        OnSlideChange="index => Record(_autoplayLog, index)"
+                        data-testid="autoplay-swiper">
+                    <DemoSlides Count="4" />
+                </Swiper>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <button class="demo-button" data-testid="autoplay-toggle" @onclick="() => _isPlaying = !_isPlaying">
+                        @(_isPlaying ? "Pause" : "Play")
+                    </button>
+                    <progress data-testid="autoplay-progress" value="@_timeLeftPercentage" max="1" style="width:160px"></progress>
+                </div>
+                <SwiperState Json="@AutoplayStateJson" TestId="autoplay-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Keyboard">
+        <Description>
+            <code>OnlyInViewport</code> keeps a slider off-screen from stealing the arrow keys from the one
+            the reader is looking at. <code>swiper.Keyboard.Enable()</code> and <code>Disable()</code> toggle
+            it at runtime without rebuilding the slider.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">Click the slider, then use the arrow keys.</p>
+                <Swiper @ref="_keyboardSwiper"
+                        Options="_keyboardOptions"
+                        OnKeyPress='key => RecordValue(_keyboardLog, "keyPress", key)'
+                        OnSlideChange="index => Record(_keyboardLog, index)"
+                        data-testid="keyboard-swiper">
+                    <DemoSlides />
+                </Swiper>
+                <button class="demo-button" data-testid="keyboard-toggle" @onclick="ToggleKeyboard">
+                    @(_isKeyboardEnabled ? "Disable keyboard" : "Enable keyboard")
+                </button>
+                <SwiperState Json="@_keyboardLog.ToJson()" TestId="keyboard-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Mousewheel">
+        <Description>
+            The wheel moves the slider. The setting worth understanding is <code>ForceToAxis</code>: it
+            restricts the slider to wheel movement along its <em>own</em> axis, so an ordinary vertical
+            wheel over a horizontal slider scrolls the page instead of hijacking into the slider. That is
+            what you want for a horizontal carousel inside a long page - and it also means a plain wheel
+            appears to do nothing, which is the point. <code>ReleaseOnEdges</code> hands the page back its
+            scroll once the slider reaches an end.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">Scroll the wheel over this one - a plain vertical wheel moves it.</p>
+                <Swiper Options="_mousewheelOptions"
+                        OnScroll="scroll => RecordScroll(scroll)"
+                        OnSlideChange="index => Record(_mousewheelLog, index)"
+                        data-testid="mousewheel-swiper">
+                    <DemoSlides />
+                </Swiper>
+                <SwiperState Json="@_mousewheelLog.ToJson()" TestId="mousewheel-state" />
+
+                <p class="demo-hint" style="margin-top:32px">
+                    <strong>ForceToAxis</strong> - a vertical wheel deliberately passes straight through to
+                    the page. Only a horizontal wheel (shift + wheel, or a trackpad sideways) moves this one.
+                </p>
+                <Swiper Options="_mousewheelAxisOptions"
+                        OnSlideChange="index => Record(_mousewheelAxisLog, index)"
+                        data-testid="mousewheel-axis-swiper">
+                    <DemoSlides />
+                </Swiper>
+                <SwiperState Json="@_mousewheelAxisLog.ToJson()" TestId="mousewheel-axis-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Zoom">
+        <Description>
+            Only content inside Swiper's zoom container zooms, which is what <code>Zoom="true"</code> on a
+            <code>SwiperSlide</code> adds - forgetting it is the usual reason zoom appears to do nothing.
+            <code>ZoomMaxRatio</code> overrides the slider's maximum for one slide.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">Double-click a slide, or pinch it on a touch screen.</p>
+                <Swiper @ref="_zoomSwiper"
+                        Options="_zoomOptions"
+                        OnZoomChange="change => RecordZoom(change)"
+                        data-testid="zoom-swiper">
+                    @* Swiper's zoom module looks for an image inside the zoom container - a div alone
+                       has nothing for it to scale, which is why these are SVGs rather than blocks of colour. *@
+                    <SwiperSlide Zoom="true">
+                        <img src="@SlideImage("#0ea5a4", "Zoom to 3x")" alt="Zoom to 3x" style="width:100%" />
+                    </SwiperSlide>
+                    <SwiperSlide Zoom="true" ZoomMaxRatio="5">
+                        <img src="@SlideImage("#6366f1", "Zoom to 5x")" alt="Zoom to 5x" style="width:100%" />
+                    </SwiperSlide>
+                    <SwiperSlide Zoom="true">
+                        <img src="@SlideImage("#f59e0b", "Zoom to 3x")" alt="Zoom to 3x" style="width:100%" />
+                    </SwiperSlide>
+                </Swiper>
+                <div style="display:flex;gap:8px">
+                    <button class="demo-button" data-testid="zoom-in" @onclick="() => _zoomSwiper!.Zoom.In()">Zoom in</button>
+                    <button class="demo-button" data-testid="zoom-out" @onclick="() => _zoomSwiper!.Zoom.Out()">Zoom out</button>
+                </div>
+                <SwiperState Json="@_zoomLog.ToJson()" TestId="zoom-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Grid">
+        <Description>
+            <code>Grid</code> lays the slides out in several rows per view. <code>Fill</code> decides whether
+            they run down the columns or across the rows, which changes what "next" means.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_gridOptions" style="height: 320px;" data-testid="grid-swiper">
+                    <DemoSlides Count="12" Height="90" />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Parallax">
+        <Description>
+            Elements inside the slides move at their own rate as the slider does, driven from markup:
+            <code>data-swiper-parallax</code> on anything inside a slide, with <code>-opacity</code>,
+            <code>-scale</code> and <code>-duration</code> variants.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_parallaxOptions" data-testid="parallax-swiper">
+                    @foreach (var (title, subtitle, color) in _parallaxSlides)
+                    {
+                        <SwiperSlide>
+                            <div class="demo-slide demo-parallax" style="background:@color">
+                                <div class="demo-parallax-title" data-swiper-parallax="-200">@title</div>
+                                <div class="demo-parallax-text" data-swiper-parallax="-100" data-swiper-parallax-opacity="0">@subtitle</div>
+                            </div>
+                        </SwiperSlide>
+                    }
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Hash navigation">
+        <Description>
+            The active slide is mirrored into the URL fragment, so a slide can be linked to. Each slide needs
+            a <code>Hash</code>, and <code>WatchState</code> makes the back button work.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">Watch the address bar as the slider moves.</p>
+                <Swiper Options="_hashOptions"
+                        OnHashSet='hash => RecordValue(_hashLog, "hashSet", hash)'
+                        OnSlideChange="index => Record(_hashLog, index)"
+                        data-testid="hash-swiper">
+                    <DemoSlides UseHashes="true" />
+                </Swiper>
+                <SwiperState Json="@_hashLog.ToJson()" TestId="hash-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Pagination types">
+        <Description>
+            Four shapes from the same module. <code>Bullets</code> is the default; <code>Fraction</code> is a
+            counter; <code>Progressbar</code> is a bar; <code>Custom</code> is rendered from a template.
+        </Description>
+        <Template>
+            @* Deliberately not a grid. A grid item's min-width defaults to auto, and Swiper sizes its
+               slides from the container it is in - the two together are a circular constraint the
+               browser resolves by growing the cell to the CSS maximum, which is 33 million pixels. *@
+            <div style="width:420px">
+                <div style="margin-bottom:32px">
+                    <p class="demo-hint">Clickable bullets</p>
+                    <Swiper Options="_bulletsOptions" data-testid="bullets-swiper">
+                        <DemoSlides Count="5" Height="140" />
+                    </Swiper>
+                </div>
+                <div style="margin-bottom:32px">
+                    <p class="demo-hint">Fraction, zero-padded to two digits</p>
+                    <Swiper Options="_fractionOptions" data-testid="fraction-swiper">
+                        <DemoSlides Count="5" Height="140" />
+                    </Swiper>
+                </div>
+                <div style="margin-bottom:32px">
+                    <p class="demo-hint">Progress bar</p>
+                    <Swiper Options="_progressbarOptions" data-testid="progressbar-swiper">
+                        <DemoSlides Count="5" Height="140" />
+                    </Swiper>
+                </div>
+                <div>
+                    <p class="demo-hint">Dynamic bullets, for a slider with more slides than bullets fit</p>
+                    <Swiper Options="_dynamicBulletsOptions" data-testid="dynamic-bullets-swiper">
+                        <DemoSlides Count="14" Height="140" />
+                    </Swiper>
+                </div>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Pagination templates">
+        <Description>
+            Swiper's <code>renderBullet</code> and friends are JavaScript functions it calls synchronously
+            while rendering, which a C# delegate cannot answer - interop is asynchronous, and on Blazor
+            Server it is a network round trip. The wrapper takes templates instead and builds the functions
+            on the JavaScript side, so numbered bullets and custom markup stay reachable.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_numberedBulletsOptions" data-testid="numbered-bullets-swiper">
+                    <DemoSlides Count="5" Height="160" />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Navigation options">
+        <Description>
+            Swiper Element draws the arrows into its own shadow DOM and exposes them as the
+            <code>button-prev</code> and <code>button-next</code> CSS parts, so styling them is a
+            <code>::part()</code> rule rather than markup you supply. <code>OnNavigationNext</code> and
+            <code>OnNavigationPrev</code> report the clicks.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_navigationOptions"
+                        OnNavigationNext='() => Record(_navigationLog, "navigationNext")'
+                        OnNavigationPrev='() => Record(_navigationLog, "navigationPrev")'
+                        OnSlideChange="index => Record(_navigationLog, index)"
+                        class="demo-tinted-nav"
+                        data-testid="navigation-swiper">
+                    <DemoSlides />
+                </Swiper>
+                <SwiperState Json="@_navigationLog.ToJson()" TestId="navigation-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Accessibility">
+        <Description>
+            The a11y module is on by default and this is the whole of it in one place. <code>ScrollOnFocus</code>
+            is the one to know about: Swiper slides a slide into view when something inside it takes focus, and
+            it schedules that a frame later - so with a host that moves the slider in response to the same
+            interaction, the correction lands after the move and pulls the slider back.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_a11yOptions" data-testid="a11y-swiper">
+                    <DemoSlides />
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Virtual">
+        <Description>
+            Swiper's virtual module renders slides itself, which puts it in direct conflict with Blazor's
+            ownership of the DOM - so the wrapper exposes the measuring side and leaves rendering to Blazor.
+            Keep the <code>@@foreach</code>, give each slide a <code>VirtualIndex</code>, and call
+            <code>swiper.Virtual.Update()</code> after the collection changes. For a genuinely large
+            collection, Blazor's own <code>Virtualize</code> inside a plain slider is usually the better trade.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper @ref="_virtualSwiper"
+                        Options="_virtualOptions"
+                        OnVirtualUpdate='() => Record(_virtualLog, "virtualUpdate")'
+                        data-testid="virtual-swiper">
+                    @for (var index = 0; index < 30; index++)
+                    {
+                        var slide = index;
+                        <SwiperSlide VirtualIndex="slide">
+                            <div class="demo-slide" style="background:#6366f1;height:140px">Slide @(slide + 1)</div>
+                        </SwiperSlide>
+                    }
+                </Swiper>
+                <button class="demo-button" data-testid="virtual-update" @onclick="() => _virtualSwiper!.Virtual.Update(true)">Update</button>
+                <SwiperState Json="@_virtualLog.ToJson()" TestId="virtual-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Keeping position across slide changes">
+        <Description>
+            When Blazor adds or removes slides, Swiper's transform still points at the old offset, and a slide
+            removed <em>before</em> the active one shifts every later slide sideways. <code>ArmAnchor</code>
+            is called <em>before</em> the change: it arms a one-shot <code>MutationObserver</code> whose
+            callback runs after Blazor's DOM patch but before the next paint, so the correction lands in the
+            same frame. Correcting from a call made afterwards is a race the browser can win by painting first.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">
+                    Move to a later slide, then remove the first one. The slider stays on the slide you were
+                    looking at instead of jumping - and it does so without a visible transition, because the
+                    correction is instant by design.
+                </p>
+                @* Deliberately not @bind-ActiveIndex here. The anchor already puts the slider where it
+                   belongs, instantly; a bound index would then see its own value change and issue a
+                   second, animated move to the slide it is already on. The two mechanisms each drive the
+                   position, so a story about one of them should not use the other. *@
+                <Swiper @ref="_anchorSwiper"
+                        Options="_anchorOptions"
+                        OnSlideChange="index => TrackAnchorIndex(index)"
+                        data-testid="anchor-swiper">
+                    @foreach (var label in _anchorSlides)
+                    {
+                        <SwiperSlide @key="label">
+                            <div class="demo-slide" style="background:#0ea5a4">@label</div>
+                        </SwiperSlide>
+                    }
+                </Swiper>
+                <div style="display:flex;gap:8px">
+                    <button class="demo-button" data-testid="anchor-next" @onclick="() => _anchorSwiper!.SlideNext()">Next</button>
+                    <button class="demo-button" data-testid="anchor-remove-first" @onclick="RemoveFirstSlide">Remove first slide</button>
+                </div>
+                <SwiperState Json="@AnchorStateJson" TestId="anchor-state" />
+            </div>
+        </Template>
+    </Story>
+
+</Stories>
+
+@code {
+    private Swiper? _keyboardSwiper;
+    private Swiper? _zoomSwiper;
+    private Swiper? _virtualSwiper;
+    private Swiper? _anchorSwiper;
+
+    private readonly SwiperEventLog _autoplayLog = new();
+    private readonly SwiperEventLog _keyboardLog = new();
+    private readonly SwiperEventLog _mousewheelLog = new();
+    private readonly SwiperEventLog _mousewheelAxisLog = new();
+    private readonly SwiperEventLog _zoomLog = new();
+    private readonly SwiperEventLog _hashLog = new();
+    private readonly SwiperEventLog _navigationLog = new();
+    private readonly SwiperEventLog _virtualLog = new();
+
+    private bool _isPlaying = true;
+    private double _timeLeftPercentage;
+    private bool _isKeyboardEnabled = true;
+
+    private int _anchorIndex;
+    private List<string> _anchorSlides = ["Slide 1", "Slide 2", "Slide 3", "Slide 4", "Slide 5"];
+
+    // camelCase so every state panel reads the same way, whether it is an anonymous object or
+    // a record the library returned.
+    private static readonly JsonSerializerOptions _jsonOptions =
+        new(JsonSerializerDefaults.Web) { WriteIndented = true };
+
+    private string AutoplayStateJson => JsonSerializer.Serialize(
+        new { isPlaying = _isPlaying, activeIndex = _autoplayLog.ActiveIndex, slideChanges = _autoplayLog.SlideChanges },
+        _jsonOptions);
+
+    private string AnchorStateJson => JsonSerializer.Serialize(
+        new { activeIndex = _anchorIndex, slides = _anchorSlides.Count, first = _anchorSlides.FirstOrDefault() },
+        _jsonOptions);
+
+    private void Record(SwiperEventLog log, int index)
+    {
+        log.RecordSlideChange(index);
+        StateHasChanged();
+    }
+
+    private void Record(SwiperEventLog log, string name)
+    {
+        log.Record(name);
+        StateHasChanged();
+    }
+
+    private void RecordValue(SwiperEventLog log, string name, object? value)
+    {
+        log.Record(name, value);
+        StateHasChanged();
+    }
+
+    /// <summary>A slide-sized SVG as a data URI, so the zoom story has a real image to scale.</summary>
+    private static string SlideImage(string color, string label)
+    {
+        var svg = $"""
+            <svg xmlns="http://www.w3.org/2000/svg" width="420" height="240" viewBox="0 0 420 240">
+                <rect width="420" height="240" rx="12" fill="{color}"/>
+                <text x="210" y="128" text-anchor="middle" fill="#ffffff"
+                      font-family="system-ui, sans-serif" font-size="22" font-weight="600">{label}</text>
+            </svg>
+            """;
+
+        return $"data:image/svg+xml,{Uri.EscapeDataString(svg)}";
+    }
+
+    private void OnTimeLeft(SwiperAutoplayTimeLeft timeLeft)
+    {
+        _timeLeftPercentage = timeLeft.Percentage;
+        StateHasChanged();
+    }
+
+    private void RecordScroll(SwiperMousewheelScroll scroll)
+    {
+        _mousewheelLog.Record("scroll", $"{scroll.DeltaX},{scroll.DeltaY}");
+        StateHasChanged();
+    }
+
+    private void RecordZoom(SwiperZoomChange change)
+    {
+        _zoomLog.Record("zoomChange", change.Scale);
+        StateHasChanged();
+    }
+
+    private async Task ToggleKeyboard()
+    {
+        _isKeyboardEnabled = !_isKeyboardEnabled;
+        await (_isKeyboardEnabled ? _keyboardSwiper!.Keyboard.Enable() : _keyboardSwiper!.Keyboard.Disable());
+    }
+
+    private void TrackAnchorIndex(int index)
+    {
+        _anchorIndex = index;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Arms the anchor BEFORE the collection changes, which is the whole point of the method.
+    /// </summary>
+    /// <remarks>
+    /// The index is not written back here. The anchor moves the slider itself, and the move comes back
+    /// through OnSlideChange like any other - writing it here as well would be the host and the anchor
+    /// both claiming to own the position.
+    /// </remarks>
+    private async Task RemoveFirstSlide()
+    {
+        if (_anchorSlides.Count <= 1)
+        {
+            return;
+        }
+
+        await _anchorSwiper!.ArmAnchor(Math.Max(0, _anchorIndex - 1));
+
+        _anchorSlides = _anchorSlides.Skip(1).ToList();
+    }
+
+    private readonly SwiperOptions _autoplayOptions = new()
+    {
+        Loop = true,
+        SpaceBetween = 16,
+        Pagination = true,
+        Autoplay = new SwiperAutoplayOptions
+        {
+            Delay = 2000,
+            DisableOnInteraction = false,
+            PauseOnMouseEnter = true
+        }
+    };
+
+    private readonly SwiperOptions _keyboardOptions = new()
+    {
+        SpaceBetween = 16,
+        Navigation = true,
+        Keyboard = new SwiperKeyboardOptions { OnlyInViewport = true, PageUpDown = true }
+    };
+
+    private readonly SwiperOptions _mousewheelOptions = new()
+    {
+        SpaceBetween = 16,
+        Pagination = true,
+        Mousewheel = new SwiperMousewheelOptions { ReleaseOnEdges = true }
+    };
+
+    private readonly SwiperOptions _mousewheelAxisOptions = new()
+    {
+        SpaceBetween = 16,
+        Pagination = true,
+        Mousewheel = new SwiperMousewheelOptions { ForceToAxis = true, ReleaseOnEdges = true }
+    };
+
+    private readonly SwiperOptions _zoomOptions = new()
+    {
+        SpaceBetween = 16,
+        Pagination = true,
+        Zoom = new SwiperZoomOptions { MaxRatio = 3, Toggle = true }
+    };
+
+    private readonly SwiperOptions _gridOptions = new()
+    {
+        SlidesPerView = 2,
+        SpaceBetween = 12,
+        Grid = new SwiperGridOptions { Rows = 3, Fill = SwiperGridFill.Row },
+        Pagination = true
+    };
+
+    private readonly SwiperOptions _parallaxOptions = new()
+    {
+        Speed = 700,
+        Parallax = true,
+        Pagination = true
+    };
+
+    private readonly SwiperOptions _hashOptions = new()
+    {
+        SpaceBetween = 16,
+        Pagination = true,
+        HashNavigation = new SwiperHashNavigationOptions { WatchState = true, ReplaceState = true }
+    };
+
+    private readonly SwiperOptions _bulletsOptions = new()
+    {
+        SpaceBetween = 12,
+        Pagination = new SwiperPaginationOptions { Type = SwiperPaginationType.Bullets, Clickable = true }
+    };
+
+    private readonly SwiperOptions _fractionOptions = new()
+    {
+        SpaceBetween = 12,
+        Pagination = new SwiperPaginationOptions { Type = SwiperPaginationType.Fraction, FractionMinimumDigits = 2 }
+    };
+
+    private readonly SwiperOptions _progressbarOptions = new()
+    {
+        SpaceBetween = 12,
+        Pagination = new SwiperPaginationOptions { Type = SwiperPaginationType.Progressbar }
+    };
+
+    private readonly SwiperOptions _dynamicBulletsOptions = new()
+    {
+        SpaceBetween = 12,
+        Pagination = new SwiperPaginationOptions { Clickable = true, DynamicBullets = true, DynamicMainBullets = 3 }
+    };
+
+    private readonly SwiperOptions _numberedBulletsOptions = new()
+    {
+        SpaceBetween = 12,
+        Pagination = new SwiperPaginationOptions
+        {
+            Clickable = true,
+            RenderBulletTemplate = "<span class=\"{{className}} demo-numbered-bullet\">{{index}}</span>"
+        },
+        // The bullets live in the element's shadow DOM, where a page stylesheet cannot reach them.
+        // InjectStyles is the way in - it is the same mechanism Swiper Element uses for its own CSS.
+        InjectStyles =
+        [
+            """
+            .swiper-pagination-bullet.demo-numbered-bullet {
+                width: 22px;
+                height: 22px;
+                line-height: 22px;
+                text-align: center;
+                border-radius: 50%;
+                background: #94a3b8;
+                color: #fff;
+                font: 600 11px system-ui, sans-serif;
+                opacity: 1;
+            }
+
+            .swiper-pagination-bullet-active.demo-numbered-bullet {
+                background: #0ea5a4;
+            }
+            """
+        ]
+    };
+
+    private readonly SwiperOptions _navigationOptions = new()
+    {
+        SpaceBetween = 16,
+        Navigation = new SwiperNavigationOptions { HideOnClick = false }
+    };
+
+    private readonly SwiperOptions _a11yOptions = new()
+    {
+        SpaceBetween = 16,
+        Navigation = true,
+        Pagination = new SwiperPaginationOptions { Clickable = true },
+        A11y = new SwiperA11yOptions
+        {
+            ContainerMessage = "Product gallery",
+            ContainerRoleDescriptionMessage = "carousel",
+            ItemRoleDescriptionMessage = "slide",
+            PrevSlideMessage = "Previous product",
+            NextSlideMessage = "Next product",
+            SlideLabelMessage = "Product {{index}} of {{slidesLength}}",
+            PaginationBulletMessage = "Go to product {{index}}",
+            ScrollOnFocus = false
+        }
+    };
+
+    private readonly SwiperOptions _virtualOptions = new()
+    {
+        SlidesPerView = 2,
+        SpaceBetween = 12,
+        Virtual = new SwiperVirtualOptions { AddSlidesBefore = 1, AddSlidesAfter = 1 }
+    };
+
+    private readonly SwiperOptions _anchorOptions = new() { SpaceBetween = 16 };
+
+    private readonly (string Title, string Subtitle, string Color)[] _parallaxSlides =
+    [
+        ("Depth", "Elements move at their own rate", "#0ea5a4"),
+        ("Layers", "Driven from data attributes", "#6366f1"),
+        ("Motion", "No JavaScript of your own", "#f59e0b")
+    ];
+}

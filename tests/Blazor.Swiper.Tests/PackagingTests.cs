@@ -22,6 +22,9 @@ public class PackagingTests
 
     private static string _projectPath => Path.Combine(_repositoryRoot, "src", "Blazor.Swiper", "Blazor.Swiper.csproj");
 
+    /// <summary>The vendored Swiper bundle, which is also what the surface tests read Swiper's own parameter list from.</summary>
+    internal static string BundlePath => Path.Combine(_wwwrootDirectory, "swiper-element-bundle.min.js");
+
     private static string _repositoryRoot
     {
         get
@@ -126,10 +129,9 @@ public class PackagingTests
         // Arrange
         var packageVersion = ReadProjectProperty("Version");
         var advertisedSwiperVersion = string.Join('.', packageVersion.Split('.').Take(3));
-        var bundlePath = Path.Combine(_wwwrootDirectory, "swiper-element-bundle.min.js");
 
         // Act
-        var banner = string.Join(Environment.NewLine, File.ReadLines(bundlePath).Take(5));
+        var banner = string.Join(Environment.NewLine, File.ReadLines(BundlePath).Take(5));
         var doesBundleMatch = banner.Contains($"Swiper Custom Element {advertisedSwiperVersion}", StringComparison.Ordinal);
 
         // Assert

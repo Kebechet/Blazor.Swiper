@@ -1,0 +1,191 @@
+@attribute [Stories("Components/Swiper/Recipes")]
+
+<Stories TComponent="Swiper">
+
+    <Story Name="Thumbnail gallery">
+        <Description>
+            The classic pairing: a main slider following a strip of thumbnails. The strip is named by CSS
+            selector, which is what makes the two order-independent - a <code>@@ref</code> is still null
+            while the sibling's markup is being evaluated, so it would only arrive once the host
+            re-rendered. The wiring waits for whichever slider initializes last.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_galleryOptions"
+                        @bind-ActiveIndex="_galleryIndex"
+                        data-testid="gallery-swiper">
+                    <DemoSlides Count="6" Height="260" Label="Photo" />
+                </Swiper>
+
+                <div style="margin-top: 12px;">
+                    <Swiper id="gallery-thumbs" Options="_thumbStripOptions" data-testid="gallery-thumbs">
+                        <DemoSlides Count="6" Height="64" Label="" />
+                    </Swiper>
+                </div>
+
+                <SwiperState Json="@GalleryStateJson" TestId="gallery-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Synced sliders">
+        <Description>
+            <code>Controller.Control</code> drives a second slider from this one, named by the same kind of
+            CSS selector the thumbnail strip uses. <code>By</code> decides whether they move slide for slide
+            or in proportion to the container translate, and <code>Inverse</code> makes the second one move
+            the opposite way.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">Drag either one. The captions below follow the images above, inverted.</p>
+
+                <Swiper Options="_controllerOptions"
+                        OnSlideChange="index => RecordIndex(index)"
+                        data-testid="controller-swiper">
+                    <DemoSlides Count="5" Height="200" Label="Image" />
+                </Swiper>
+
+                <div style="margin-top: 12px;">
+                    <Swiper id="controller-captions" Options="_captionOptions" data-testid="controller-captions">
+                        <DemoSlides Count="5" Height="60" Label="Caption" />
+                    </Swiper>
+                </div>
+
+                <SwiperState Json="@ControllerStateJson" TestId="controller-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Wizard">
+        <Description>
+            A stepper is a slider the host drives and the user cannot: <code>AllowTouchMove = false</code>
+            takes the gesture away, and <code>@@bind-ActiveIndex</code> is the whole navigation. Because the
+            binding reports the index the slider settles on, the buttons and the progress text stay right
+            without any callback wiring.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper @bind-ActiveIndex="_step" Options="_wizardOptions" data-testid="wizard-swiper">
+                    @for (var index = 0; index < _steps.Length; index++)
+                    {
+                        var step = index;
+                        <SwiperSlide Index="step">
+                            <SlideContent Context="state">
+                                <div class="demo-slide" style="background:@(state.IsActive ? "#0ea5a4" : "#94a3b8");flex-direction:column;gap:8px">
+                                    <div>@_steps[step]</div>
+                                    <small style="font-weight:400;opacity:.85">Step @(step + 1) of @_steps.Length</small>
+                                </div>
+                            </SlideContent>
+                        </SwiperSlide>
+                    }
+                </Swiper>
+
+                <div style="display:flex;gap:8px;align-items:center">
+                    <button class="demo-button" data-testid="wizard-back" disabled="@(_step == 0)" @onclick="() => _step--">Back</button>
+                    <button class="demo-button" data-testid="wizard-next" disabled="@(_step == _steps.Length - 1)" @onclick="() => _step++">Next</button>
+                    <span data-testid="wizard-progress">@(_step + 1) / @_steps.Length</span>
+                </div>
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Hero banner">
+        <Description>
+            Autoplay, loop, pagination and parallax together - the shape most marketing sliders take. Autoplay
+            pauses while the pointer rests on it and restarts afterwards, which
+            <code>DisableOnInteraction = false</code> is what allows.
+        </Description>
+        <Template>
+            <div style="width: 100%; max-width: 720px;">
+                <Swiper Options="_heroOptions" data-testid="hero-swiper">
+                    @foreach (var (title, subtitle, color) in _heroSlides)
+                    {
+                        <SwiperSlide>
+                            <div class="demo-slide demo-parallax" style="background:@color;height:260px">
+                                <div class="demo-parallax-title" data-swiper-parallax="-300">@title</div>
+                                <div class="demo-parallax-text" data-swiper-parallax="-150" data-swiper-parallax-opacity="0">@subtitle</div>
+                            </div>
+                        </SwiperSlide>
+                    }
+                </Swiper>
+            </div>
+        </Template>
+    </Story>
+
+</Stories>
+
+@code {
+    private int _galleryIndex;
+    private int _step;
+    private int _controllerIndex;
+
+    // camelCase so every state panel reads the same way, whether it is an anonymous object or
+    // a record the library returned.
+    private static readonly JsonSerializerOptions _jsonOptions =
+        new(JsonSerializerDefaults.Web) { WriteIndented = true };
+
+    private string GalleryStateJson => JsonSerializer.Serialize(new { activeIndex = _galleryIndex }, _jsonOptions);
+
+    private string ControllerStateJson => JsonSerializer.Serialize(new { activeIndex = _controllerIndex }, _jsonOptions);
+
+    private void RecordIndex(int index)
+    {
+        _controllerIndex = index;
+        StateHasChanged();
+    }
+
+    private readonly string[] _steps = ["Your details", "Delivery", "Payment", "Confirm"];
+
+    private readonly SwiperOptions _galleryOptions = new()
+    {
+        SpaceBetween = 12,
+        Navigation = true,
+        Thumbs = new SwiperThumbsOptions { Swiper = "#gallery-thumbs", MultipleActiveThumbs = false, AutoScrollOffset = 1 }
+    };
+
+    private readonly SwiperOptions _thumbStripOptions = new()
+    {
+        SlidesPerView = 5,
+        SpaceBetween = 8,
+        WatchSlidesProgress = true,
+        SlideToClickedSlide = true
+    };
+
+    private readonly SwiperOptions _controllerOptions = new()
+    {
+        SpaceBetween = 12,
+        Navigation = true,
+        Controller = new SwiperControllerOptions { Control = "#controller-captions", By = SwiperControlBy.Slide, Inverse = true }
+    };
+
+    private readonly SwiperOptions _captionOptions = new() { SpaceBetween = 12, AllowTouchMove = false };
+
+    private readonly SwiperOptions _wizardOptions = new()
+    {
+        SpaceBetween = 16,
+        AllowTouchMove = false,
+        AutoHeight = true
+    };
+
+    private readonly SwiperOptions _heroOptions = new()
+    {
+        Loop = true,
+        Speed = 800,
+        Parallax = true,
+        Pagination = new SwiperPaginationOptions { Clickable = true, DynamicBullets = false },
+        Navigation = true,
+        Autoplay = new SwiperAutoplayOptions
+        {
+            Delay = 3500,
+            DisableOnInteraction = false,
+            PauseOnMouseEnter = true
+        }
+    };
+
+    private readonly (string Title, string Subtitle, string Color)[] _heroSlides =
+    [
+        ("Built on Swiper Element", "No npm step, no CDN, no script tag", "#0ea5a4"),
+        ("Every parameter, typed", "Swiper's own names, so its docs read straight onto it", "#6366f1"),
+        ("Every event, opt-in", "Nothing is listened for until you wire a callback", "#f59e0b")
+    ];
+}

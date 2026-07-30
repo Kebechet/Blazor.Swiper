@@ -1,0 +1,224 @@
+@attribute [Stories("Components/Swiper/Events")]
+
+<Stories TComponent="Swiper">
+
+    <Story Name="Event lab">
+        <Description>
+            Every event this slider is subscribed to, counted as it arrives. Nothing is listened for until a
+            callback is assigned - the component works out which ones have a delegate and tells the interop
+            module only those names - so this story is deliberately the expensive case: it subscribes to
+            almost everything, which no real slider should.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">
+                    Swipe, click, tap, use the arrows and the bullets, resize the canvas. Each interaction
+                    lights up a different set of counters.
+                </p>
+                <Swiper @ref="_labSwiper"
+                        Options="_labOptions"
+                        EventThrottle="TimeSpan.FromMilliseconds(100)"
+                        OnBeforeInit='() => Log("beforeInit")'
+                        OnInit='() => Log("init")'
+                        OnAfterInit='() => Log("afterInit")'
+                        OnReady='() => Log("ready")'
+                        OnSlideChange="index => LogSlideChange(index)"
+                        OnUserSlideChange="index => LogUserSlideChange(index)"
+                        OnSlideChangeTransitionStart='() => Log("slideChangeTransitionStart")'
+                        OnSlideChangeTransitionEnd='() => Log("slideChangeTransitionEnd")'
+                        OnSlideNextTransitionStart='() => Log("slideNextTransitionStart")'
+                        OnSlideNextTransitionEnd='() => Log("slideNextTransitionEnd")'
+                        OnSlidePrevTransitionStart='() => Log("slidePrevTransitionStart")'
+                        OnSlidePrevTransitionEnd='() => Log("slidePrevTransitionEnd")'
+                        OnSlideResetTransitionStart='() => Log("slideResetTransitionStart")'
+                        OnSlideResetTransitionEnd='() => Log("slideResetTransitionEnd")'
+                        OnTransitionStart='() => Log("transitionStart")'
+                        OnTransitionEnd='() => Log("transitionEnd")'
+                        OnBeforeTransitionStart='speed => Log("beforeTransitionStart", speed)'
+                        OnBeforeSlideChangeStart='() => Log("beforeSlideChangeStart")'
+                        OnTouchStart='args => Log("touchStart", args.SlideIndex)'
+                        OnTouchMove='() => Log("touchMove")'
+                        OnTouchMoveOpposite='() => Log("touchMoveOpposite")'
+                        OnTouchEnd='() => Log("touchEnd")'
+                        OnSliderMove='() => Log("sliderMove")'
+                        OnSliderFirstMove='() => Log("sliderFirstMove")'
+                        OnClick='args => Log("click", args.SlideIndex)'
+                        OnTap='args => Log("tap", args.SlideIndex)'
+                        OnDoubleTap='() => Log("doubleTap")'
+                        OnDoubleClick='() => Log("doubleClick")'
+                        OnProgress='progress => Log("progress", Math.Round(progress, 2))'
+                        OnSetTranslate='translate => Log("setTranslate", Math.Round(translate))'
+                        OnSetTransition='duration => Log("setTransition", duration)'
+                        OnReachBeginning='() => Log("reachBeginning")'
+                        OnReachEnd='() => Log("reachEnd")'
+                        OnToEdge='() => Log("toEdge")'
+                        OnFromEdge='() => Log("fromEdge")'
+                        OnResize='() => Log("resize")'
+                        OnBeforeResize='() => Log("beforeResize")'
+                        OnObserverUpdate='() => Log("observerUpdate")'
+                        OnBeforeLoopFix='() => Log("beforeLoopFix")'
+                        OnLoopFix='() => Log("loopFix")'
+                        OnBreakpoint='key => Log("breakpoint", key)'
+                        OnActiveIndexChange='index => Log("activeIndexChange", index)'
+                        OnSnapIndexChange='index => Log("snapIndexChange", index)'
+                        OnRealIndexChange='index => Log("realIndexChange", index)'
+                        OnChangeDirection='() => Log("changeDirection")'
+                        OnMomentumBounce='() => Log("momentumBounce")'
+                        OnOrientationChange='() => Log("orientationchange")'
+                        OnSlidesLengthChange='count => Log("slidesLengthChange", count)'
+                        OnSlidesGridLengthChange='count => Log("slidesGridLengthChange", count)'
+                        OnSnapGridLengthChange='count => Log("snapGridLengthChange", count)'
+                        OnSlidesUpdated='count => Log("slidesUpdated", count)'
+                        OnUpdate='() => Log("update")'
+                        OnLock='() => Log("lock")'
+                        OnUnlock='() => Log("unlock")'
+                        OnNavigationNext='() => Log("navigationNext")'
+                        OnNavigationPrev='() => Log("navigationPrev")'
+                        OnNavigationShow='() => Log("navigationShow")'
+                        OnNavigationHide='() => Log("navigationHide")'
+                        OnPaginationRender='() => Log("paginationRender")'
+                        OnPaginationUpdate='() => Log("paginationUpdate")'
+                        OnPaginationShow='() => Log("paginationShow")'
+                        OnPaginationHide='() => Log("paginationHide")'
+                        OnScrollbarDragStart='() => Log("scrollbarDragStart")'
+                        OnScrollbarDragMove='() => Log("scrollbarDragMove")'
+                        OnScrollbarDragEnd='() => Log("scrollbarDragEnd")'
+                        OnDestroy='() => Log("destroy")'
+                        OnBeforeDestroy='() => Log("beforeDestroy")'
+                        data-testid="lab-swiper">
+                    <DemoSlides Count="6" Height="160" />
+                </Swiper>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="demo-button" data-testid="lab-next" @onclick="() => _labSwiper!.SlideNext()">Next</button>
+                    <button class="demo-button" data-testid="lab-prev" @onclick="() => _labSwiper!.SlidePrev()">Prev</button>
+                    <button class="demo-button" data-testid="lab-last" @onclick="() => _labSwiper!.SlideTo(5)">Last</button>
+                    <button class="demo-button" data-testid="lab-update" @onclick="() => _labSwiper!.Update()">Update</button>
+                </div>
+                <SwiperState Json="@_labLog.ToJson()" TestId="lab-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="High frequency events">
+        <Description>
+            <code>OnProgress</code>, <code>OnSetTranslate</code>, <code>OnSliderMove</code>,
+            <code>OnTouchMove</code>, <code>OnAutoplayTimeLeft</code> and <code>OnZoomChange</code> fire on
+            every animation frame. On Blazor Server that is a network round trip per frame, which is what
+            <code>EventThrottle</code> is for. The first event of a burst is always delivered, so a drag still
+            reports its start immediately.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">
+                    Two sliders, the same subscriptions. The second one delivers at most one event every
+                    200ms - drag either and compare the counts.
+                </p>
+
+                <p class="demo-hint"><strong>No throttle</strong></p>
+                <Swiper Options="_frequentOptions"
+                        OnProgress="value => LogProgress(_unthrottledLog, value)"
+                        data-testid="unthrottled-swiper">
+                    <DemoSlides Count="5" Height="120" />
+                </Swiper>
+                <SwiperState Json="@_unthrottledLog.ToJson()" TestId="unthrottled-state" />
+
+                <p class="demo-hint" style="margin-top:24px"><strong>Throttled to 200ms</strong></p>
+                <Swiper Options="_frequentOptions"
+                        EventThrottle="TimeSpan.FromMilliseconds(200)"
+                        OnProgress="value => LogProgress(_throttledLog, value)"
+                        data-testid="throttled-swiper">
+                    <DemoSlides Count="5" Height="120" />
+                </Swiper>
+                <SwiperState Json="@_throttledLog.ToJson()" TestId="throttled-state" />
+            </div>
+        </Template>
+    </Story>
+
+    <Story Name="Subscribing on demand">
+        <Description>
+            The subscription set is not fixed at init. A callback assigned later is picked up and the interop
+            module is told to start listening; one removed stops costing anything. That is what makes a
+            diagnostics panel that watches <code>OnProgress</code> only while it is open affordable.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <Swiper Options="_frequentOptions"
+                        OnProgress="@(_isWatching ? EventCallback.Factory.Create<double>(this, value => LogProgress(_onDemandLog, value)) : default)"
+                        data-testid="on-demand-swiper">
+                    <DemoSlides Count="5" Height="120" />
+                </Swiper>
+                <button class="demo-button" data-testid="on-demand-toggle" @onclick="() => _isWatching = !_isWatching">
+                    @(_isWatching ? "Stop watching progress" : "Watch progress")
+                </button>
+                <SwiperState Json="@OnDemandStateJson" TestId="on-demand-state" />
+            </div>
+        </Template>
+    </Story>
+
+</Stories>
+
+@code {
+    private Swiper? _labSwiper;
+
+    private readonly SwiperEventLog _labLog = new();
+    private readonly SwiperEventLog _unthrottledLog = new();
+    private readonly SwiperEventLog _throttledLog = new();
+    private readonly SwiperEventLog _onDemandLog = new();
+
+    private bool _isWatching;
+
+    // camelCase so every state panel reads the same way, whether it is an anonymous object or
+    // a record the library returned.
+    private static readonly JsonSerializerOptions _jsonOptions =
+        new(JsonSerializerDefaults.Web) { WriteIndented = true };
+
+    private string OnDemandStateJson => JsonSerializer.Serialize(
+        new { isWatching = _isWatching, progressEvents = _onDemandLog.Count("progress") },
+        _jsonOptions);
+
+    private void Log(string name)
+    {
+        _labLog.Record(name);
+        StateHasChanged();
+    }
+
+    private void Log(string name, object? value)
+    {
+        _labLog.Record(name, value);
+        StateHasChanged();
+    }
+
+    private void LogSlideChange(int index)
+    {
+        _labLog.RecordSlideChange(index);
+        StateHasChanged();
+    }
+
+    private void LogUserSlideChange(int index)
+    {
+        _labLog.RecordUserSlideChange(index);
+        StateHasChanged();
+    }
+
+    private void LogProgress(SwiperEventLog log, double progress)
+    {
+        log.Record("progress", Math.Round(progress, 3));
+        StateHasChanged();
+    }
+
+    private readonly SwiperOptions _labOptions = new()
+    {
+        SpaceBetween = 16,
+        Navigation = true,
+        Pagination = new SwiperPaginationOptions { Clickable = true },
+        Scrollbar = new SwiperScrollbarOptions { Draggable = true, Hide = false },
+        GrabCursor = true
+    };
+
+    private readonly SwiperOptions _frequentOptions = new()
+    {
+        SlidesPerView = 2,
+        SpaceBetween = 12,
+        GrabCursor = true
+    };
+}

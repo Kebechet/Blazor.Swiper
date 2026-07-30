@@ -1,0 +1,39 @@
+@* The slides most stories use. A component rather than a shared RenderFragment so that each story
+   file does not restate the same loop - it renders no element of its own, so the swiper-slide
+   elements stay direct children of the swiper-container, which is what Swiper requires. *@
+
+@for (var index = 0; index < Count; index++)
+{
+    var slide = index;
+    <SwiperSlide Index="slide" Hash="@(UseHashes ? $"slide-{slide + 1}" : null)">
+        <div class="demo-slide" style="background:@Palette[slide % Palette.Length];height:@(Height)px">
+            @Label @(slide + 1)
+        </div>
+    </SwiperSlide>
+}
+
+@code {
+    /// <summary>How many slides to render.</summary>
+    [Parameter] public int Count { get; set; } = 4;
+
+    /// <summary>Slide height in px. Vertical and autoHeight stories want their own.</summary>
+    [Parameter] public int Height { get; set; } = 200;
+
+    /// <summary>Text before the slide number.</summary>
+    [Parameter] public string Label { get; set; } = "Slide";
+
+    /// <summary>Gives every slide a hash, for the hash-navigation and history stories.</summary>
+    [Parameter] public bool UseHashes { get; set; }
+
+    private static readonly string[] Palette =
+    [
+        "#0ea5a4",
+        "#6366f1",
+        "#f59e0b",
+        "#ef4444",
+        "#8b5cf6",
+        "#14b8a6",
+        "#ec4899",
+        "#3b82f6"
+    ];
+}
