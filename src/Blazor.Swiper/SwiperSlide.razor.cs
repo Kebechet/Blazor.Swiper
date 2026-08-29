@@ -138,6 +138,17 @@ public partial class SwiperSlide : IDisposable
             attributes["data-swiper-slide-index"] = VirtualIndex.Value;
         }
 
+        var virtualOffsetStyle = Parent?.VirtualOffsetStyle;
+        if (virtualOffsetStyle is not null)
+        {
+            // A window of a few slides has to sit where the whole collection would have put it, and
+            // Swiper offsets the slides themselves rather than the track. Appended rather than
+            // assigned: the style is the caller's to write, and this only adds to it.
+            attributes["style"] = attributes.TryGetValue("style", out var callerStyle)
+                ? $"{callerStyle};{virtualOffsetStyle}"
+                : virtualOffsetStyle;
+        }
+
         if (ZoomMaxRatio is not null)
         {
             attributes["data-swiper-zoom"] = ZoomMaxRatio.Value;
