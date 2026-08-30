@@ -299,6 +299,40 @@
         </Template>
     </Story>
 
+    <Story Name="Virtual windowed">
+        <Description>
+            The story above keeps every slide mounted and uses only the module's measuring side. Handling
+            <code>OnVirtualRender</code> is the rest of the arrangement: it is Swiper's own
+            <code>renderExternal</code> hook, which exists so a framework can keep the DOM. Swiper works out
+            which slides are needed and where the window sits, hands both over, and creates nothing itself -
+            so there is no conflict to manage. Set <code>SlideCount</code>, render exactly
+            <code>From</code>..<code>To</code>, and leave the offset alone; the wrapper puts it on the slides,
+            which is where Swiper's own renderer would have put it.
+            <br /><br />
+            The module builds its grids from <code>SlideCount</code> rather than from the elements present, so
+            an empty first render costs nothing but the frame before the first window arrives - this story
+            seeds one only to skip it.
+        </Description>
+        <Template>
+            <div style="width: 420px;">
+                <p class="demo-hint">@WindowedSlideCount slides in the collection; only the window Swiper asked for is in the DOM.</p>
+                <Swiper Options="_windowedVirtualOptions"
+                        OnVirtualRender="OnVirtualRender"
+                        OnSlideChange="index => Record(_windowedLog, index)"
+                        data-testid="virtual-windowed-swiper">
+                    @for (var index = _virtualWindow.From; index <= _virtualWindow.To; index++)
+                    {
+                        var slide = index;
+                        <SwiperSlide @key="slide" VirtualIndex="slide">
+                            <div class="demo-slide" style="background:#0ea5e9;height:140px">Slide @(slide + 1)</div>
+                        </SwiperSlide>
+                    }
+                </Swiper>
+                <SwiperState Json="@WindowedStateJson" TestId="virtual-windowed-state" />
+            </div>
+        </Template>
+    </Story>
+
     <Story Name="Keeping position across slide changes">
         <Description>
             When Blazor adds or removes slides, Swiper's transform still points at the old offset, and a slide
@@ -354,6 +388,7 @@
     private readonly SwiperEventLog _hashLog = new();
     private readonly SwiperEventLog _navigationLog = new();
     private readonly SwiperEventLog _virtualLog = new();
+    private readonly SwiperEventLog _windowedLog = new();
 
     private bool _isPlaying = true;
     private double _timeLeftPercentage;
@@ -370,6 +405,24 @@
     private string AutoplayStateJson => JsonSerializer.Serialize(
         new { isPlaying = _isPlaying, activeIndex = _autoplayLog.ActiveIndex, slideChanges = _autoplayLog.SlideChanges },
         _jsonOptions);
+
+    private string WindowedStateJson => JsonSerializer.Serialize(
+        new
+        {
+            slideCount = WindowedSlideCount,
+            from = _virtualWindow.From,
+            to = _virtualWindow.To,
+            offset = _virtualWindow.Offset,
+            renderedSlides = _virtualWindow.To - _virtualWindow.From + 1,
+            activeIndex = _windowedLog.ActiveIndex
+        },
+        _jsonOptions);
+
+    private void OnVirtualRender(SwiperVirtualWindow window)
+    {
+        _virtualWindow = window;
+        StateHasChanged();
+    }
 
     private string AnchorStateJson => JsonSerializer.Serialize(
         new { activeIndex = _anchorIndex, slides = _anchorSlides.Count, first = _anchorSlides.FirstOrDefault() },
@@ -606,6 +659,24 @@
         SpaceBetween = 12,
         Virtual = new SwiperVirtualOptions { AddSlidesBefore = 1, AddSlidesAfter = 1 }
     };
+
+    private const int WindowedSlideCount = 200;
+
+    private readonly SwiperOptions _windowedVirtualOptions = new()
+    {
+        SpaceBetween = 12,
+        Virtual = new SwiperVirtualOptions
+        {
+            Enabled = true,
+            SlideCount = WindowedSlideCount,
+            AddSlidesBefore = 1,
+            AddSlidesAfter = 1
+        }
+    };
+
+    // Only to skip the empty frame between init and the first window: the module sizes itself from
+    // SlideCount, so an unseeded slider initializes and navigates perfectly well without it.
+    private SwiperVirtualWindow _virtualWindow = new() { From = 0, To = 2 };
 
     private readonly SwiperOptions _anchorOptions = new() { SpaceBetween = 16 };
 

@@ -26,7 +26,8 @@ import {
     shouldSendThrottledEvent,
     extractPaginationTemplates,
     renderTemplate,
-    formatFractionNumber
+    formatFractionNumber,
+    virtualExternalOptions
 } from "./swiper-policy.js";
 
 // Swiper Element dispatches every Swiper event as a DOM event named `swiper` + the lowercased event
@@ -50,7 +51,7 @@ function hostState(element) {
     return element.__blazorSwiper;
 }
 
-export async function initialize(element, options, dotNetRef, subscribedEvents, eventThrottleMs) {
+export async function initialize(element, options, dotNetRef, subscribedEvents, eventThrottleMs, isVirtualExternal) {
     // The host can tear the slider down before this runs - a conditionally rendered pager collapsing on the
     // very tap that scheduled it - and the reference then marshals to null. Awaiting the element definition
     // widens that window further, so re-check after it too. Without this, initialising a slider that no
@@ -78,7 +79,7 @@ export async function initialize(element, options, dotNetRef, subscribedEvents, 
         subscribe(element, name);
     }
 
-    applyOptions(element, options);
+    applyOptions(element, withVirtualExternal(element, options, isVirtualExternal));
 
     // Listeners are attached AFTER initialize() on purpose. Swiper announces its starting position from
     // inside init() (runCallbacksOnInit defaults on), and that announcement is not news to the host - it
@@ -105,6 +106,32 @@ export async function initialize(element, options, dotNetRef, subscribedEvents, 
         // until it does would keep the slider hidden behind the reveal handshake indefinitely.
         wireCompanionsFromSelectors(element, swiper);
     }
+}
+
+/**
+ * The options with virtual slides pointed at the host, when the host asked to render them.
+ *
+ * The callback is built here rather than in the policy because it is the one part that needs the
+ * live Swiper: the offset belongs on a CSS property that direction and text direction pick between,
+ * and only the instance knows which. Everything the host renders is a slide element it owns, so
+ * Swiper never touches the DOM on this path at all.
+ */
+function withVirtualExternal(element, options, isVirtualExternal) {
+    if (!isVirtualExternal || !options?.virtual) {
+        return options;
+    }
+
+    const renderExternal = function (window) {
+        const offsetProperty = this.rtlTranslate
+            ? "right"
+            : this.isHorizontal()
+                ? "left"
+                : "top";
+
+        invoke(element, "OnVirtualRenderInternal", window.from, window.to, window.offset, offsetProperty);
+    };
+
+    return { ...options, virtual: virtualExternalOptions(options.virtual, renderExternal) };
 }
 
 // --- companions named by selector ----------------------------------------------------------------

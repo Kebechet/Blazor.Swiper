@@ -177,17 +177,35 @@ public sealed record SwiperThumbsOptions
 /// Swiper's <c>virtual</c> module, which keeps only the slides near the viewport in the DOM.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Swiper renders virtual slides itself, which puts it in direct conflict with Blazor's ownership
 /// of the DOM - so the wrapper exposes the measurement side of the module and leaves rendering to
 /// Blazor: keep your <see cref="SwiperSlide"/> loop, and give each one a
-/// <see cref="SwiperSlide.VirtualIndex"/> so Swiper can address slides it did not create. For a
-/// large collection, Blazor's own <c>Virtualize</c> inside a plain Swiper is usually the better
-/// trade.
+/// <see cref="SwiperSlide.VirtualIndex"/> so Swiper can address slides it did not create.
+/// </para>
+/// <para>
+/// Handling <see cref="Swiper.OnVirtualRender"/> turns that into the full arrangement: set
+/// <see cref="SlideCount"/>, render only the slides the window names, and Swiper never touches a
+/// slide element. Without a handler the module is left to its own rendering, which a Blazor host
+/// almost never wants - for a large collection with no handler, Blazor's own <c>Virtualize</c>
+/// inside a plain Swiper is the better trade.
+/// </para>
 /// </remarks>
 public sealed record SwiperVirtualOptions : SwiperToggleableOptions
 {
     /// <summary>Keep rendered slides cached. Null = Swiper's default (true).</summary>
     public bool? Cache { get; set; }
+
+    /// <summary>
+    /// How many slides the collection holds. Required when <see cref="Swiper.OnVirtualRender"/>
+    /// renders the window, and meaningless without it.
+    /// </summary>
+    /// <remarks>
+    /// Swiper's own member is <c>slides</c>, the array it renders from. With rendering handed to
+    /// Blazor the contents are never read - only the length, to know where the collection ends - so
+    /// a count is the whole of what the module needs and the wrapper expands it on the JS side.
+    /// </remarks>
+    public int? SlideCount { get; set; }
 
     /// <summary>Extra slides kept before the visible range. Null = Swiper's default (0).</summary>
     public int? AddSlidesBefore { get; set; }

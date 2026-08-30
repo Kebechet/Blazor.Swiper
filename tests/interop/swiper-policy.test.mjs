@@ -17,7 +17,8 @@ import {
     shouldSendThrottledEvent,
     extractPaginationTemplates,
     renderTemplate,
-    formatFractionNumber
+    formatFractionNumber,
+    virtualExternalOptions
 } from "../../src/Blazor.Swiper/wwwroot/swiper-policy.js";
 
 /** The applied options as an object, which reads better than an entry array in an assertion. */
@@ -376,4 +377,69 @@ test("FormatFractionNumber_NoPaddingAsked_LeavesTheNumberAsItWas", () => {
     // Swiper keeps its own formatting rather than being handed a formatter that pads to nothing.
     assert.equal(formatFractionNumber(3, null), 3);
     assert.equal(formatFractionNumber(3, 1), 3);
+});
+
+test("VirtualExternalOptions_NoRenderer_LeavesSwiperToItsOwnRendering", () => {
+    // Arrange - the module is on, but nobody handles OnVirtualRender
+    const virtual = { enabled: true, slideCount: 40 };
+
+    // Act
+    const result = virtualExternalOptions(virtual, null);
+
+    // Assert - unchanged, so the plain renderSlide path stays exactly as Swiper ships it
+    assert.equal(result, virtual);
+});
+
+test("VirtualExternalOptions_AHostRenderer_IsInstalledAsRenderExternal", () => {
+    // Arrange
+    const renderExternal = () => { };
+
+    // Act
+    const result = virtualExternalOptions({ enabled: true, slideCount: 3 }, renderExternal);
+
+    // Assert
+    assert.equal(result.renderExternal, renderExternal);
+});
+
+test("VirtualExternalOptions_AHostRenderer_TurnsOffSwipersOwnPostRenderPass", () => {
+    // Act
+    const result = virtualExternalOptions({ enabled: true, slideCount: 3 }, () => { });
+
+    // Assert - Swiper's pass would measure a window Blazor has not rendered yet, because the call
+    // announcing it only starts a render
+    assert.equal(result.renderExternalUpdate, false);
+});
+
+test("VirtualExternalOptions_ASlideCount_BecomesTheArraySwiperMeasuresAgainst", () => {
+    // Act
+    const result = virtualExternalOptions({ enabled: true, slideCount: 4 }, () => { });
+
+    // Assert - Swiper reads the length to know where the collection ends
+    assert.deepEqual(result.slides, [0, 1, 2, 3]);
+});
+
+test("VirtualExternalOptions_ASlideCount_IsNotForwardedToSwiper", () => {
+    // Act
+    const result = virtualExternalOptions({ enabled: true, slideCount: 4 }, () => { });
+
+    // Assert - slideCount is the wrapper's own spelling; Swiper has no such parameter
+    assert.equal("slideCount" in result, false);
+});
+
+test("VirtualExternalOptions_NoSlideCount_IsAnEmptyCollectionRatherThanACrash", () => {
+    // Act
+    const result = virtualExternalOptions({ enabled: true }, () => { });
+
+    // Assert
+    assert.deepEqual(result.slides, []);
+});
+
+test("VirtualExternalOptions_TheCallersOwnMembers_Survive", () => {
+    // Act
+    const result = virtualExternalOptions({ enabled: true, cache: false, addSlidesBefore: 2, slideCount: 1 }, () => { });
+
+    // Assert
+    assert.equal(result.enabled, true);
+    assert.equal(result.cache, false);
+    assert.equal(result.addSlidesBefore, 2);
 });

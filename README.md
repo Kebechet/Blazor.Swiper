@@ -186,7 +186,7 @@ Each module is its own record, and each one that can be switched off outright ha
 | `History` | `SwiperHistoryOptions?` | `Root`, `Key`, `ReplaceState`, `KeepQuery`. Needs `SwiperSlide.Hash` |
 | `Thumbs` | `SwiperThumbsOptions?` | `MultipleActiveThumbs`, `AutoScrollOffset`, two class names. The strip itself goes on [`Thumbs`](#thumbnails-and-synced-sliders) |
 | `Controller` | `SwiperControllerOptions?` | `Inverse`, `By`. The controlled slider goes on [`Controller`](#thumbnails-and-synced-sliders) |
-| `Virtual` | `SwiperVirtualOptions?` | `Cache`, `AddSlidesBefore`, `AddSlidesAfter`, `SlidesPerViewAutoSlideSize` - read its remarks first |
+| `Virtual` | `SwiperVirtualOptions?` | `Cache`, `SlideCount`, `AddSlidesBefore`, `AddSlidesAfter`, `SlidesPerViewAutoSlideSize`. Pair `SlideCount` with [`OnVirtualRender`](#virtual-slides-rendered-by-blazor) to keep only a window in the DOM |
 | `FadeEffect`, `CubeEffect`, `FlipEffect`, `CoverflowEffect`, `CreativeEffect`, `CardsEffect` | records | Read by the matching `Effect` value |
 
 A module options object with **no** `Enabled` set is taken by Swiper as enabled, so `Autoplay = new() { Delay = 2000 }` starts playing. `Enabled = false` is sent as a plain `false` rather than as an object, because Swiper Element builds a module's elements for any object it's given - before the module itself declines to run.
@@ -328,7 +328,7 @@ All 77 of Swiper's events have a callback. **Nothing is listened for until you a
 | Autoplay | `OnAutoplay`, `OnAutoplayStart`, `OnAutoplayStop`, `OnAutoplayPause`, `OnAutoplayResume`, `OnAutoplayTimeLeft` |
 | Navigation & pagination | `OnNavigationNext`, `OnNavigationPrev`, `OnNavigationShow`, `OnNavigationHide`, `OnPaginationRender`, `OnPaginationUpdate`, `OnPaginationShow`, `OnPaginationHide` |
 | Scrollbar | `OnScrollbarDragStart`, `OnScrollbarDragMove`, `OnScrollbarDragEnd` |
-| Other modules | `OnKeyPress`, `OnScroll` (mousewheel), `OnZoomChange`, `OnHashChange`, `OnHashSet`, `OnVirtualUpdate` |
+| Other modules | `OnKeyPress`, `OnScroll` (mousewheel), `OnZoomChange`, `OnHashChange`, `OnHashSet`, `OnVirtualUpdate`, [`OnVirtualRender`](#virtual-slides-rendered-by-blazor) |
 
 Swiper hands several events a DOM element or DOM event, neither of which can cross the interop boundary, so what arrives is the part you can act on: `SwiperPointerEventArgs` (client coordinates and the clicked slide index), `SwiperAutoplayTimeLeft`, `SwiperZoomChange`, `SwiperMousewheelScroll`.
 
@@ -384,6 +384,51 @@ await _swiper.Slides.Append("<swiper-slide>...</swiper-slide>");   // Prepend, I
 ```
 
 `Slides` is Swiper's own manipulation API. It writes slide elements Blazor didn't render and doesn't know about, so the next render that touches the collection will fight it - it's an escape hatch for a host that owns the slider outright. When Blazor renders the slides, keep the `@foreach` and use the anchoring methods below.
+
+### Virtual slides rendered by Blazor
+
+Swiper's virtual module normally creates and removes slide elements itself, which is a fight with
+Blazor over the same DOM. `OnVirtualRender` is Swiper's `renderExternal` hook - the one its React and
+Vue bindings use - so Swiper works out *which* slides are needed and *where* the window sits, hands
+both over, and touches no element at all.
+
+```csharp
+private SwiperVirtualWindow _window = new() { From = 0, To = 2 };
+
+private readonly SwiperOptions _options = new()
+{
+    Virtual = new SwiperVirtualOptions { Enabled = true, SlideCount = 200 }
+};
+```
+
+```razor
+<Swiper Options="_options" OnVirtualRender="w => { _window = w; StateHasChanged(); }">
+    @for (var index = _window.From; index <= _window.To; index++)
+    {
+        var slide = index;
+        <SwiperSlide @key="slide" VirtualIndex="slide">Slide @(slide + 1)</SwiperSlide>
+    }
+</Swiper>
+```
+
+Three slide elements exist for a collection of two hundred, and the window moves with the slider.
+Two things to know:
+
+- **Leave `Offset` alone.** The wrapper applies it to the slides, which is where Swiper's own
+  renderer puts it - it is what keeps a three-slide window sitting where slides 98 to 100 belong
+  rather than at the track's origin.
+- **An empty first render is fine.** The module builds its grids from `SlideCount`, not from the
+  elements present, so a slider that initializes before the first window arrives still knows the
+  collection is two hundred slides long and still navigates. Seeding a window - as the story does -
+  only saves the empty frame between init and the first render. The exception is
+  `SlidesPerView = "auto"`, which sizes from real elements and falls back to
+  `SlidesPerViewAutoSlideSize` until they exist.
+
+Re-measuring is handled too: the window arrives *before* Blazor has rendered it, so Swiper is told to
+skip its own post-render pass and the wrapper runs it on the render that follows.
+
+Without a handler the module behaves as it always did - it renders slides itself, which is why the
+plain `AddSlidesBefore`/`AddSlidesAfter` route is worth using only for its measuring side.
 
 ### Reading the state
 

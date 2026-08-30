@@ -131,6 +131,27 @@ public partial class Swiper : IAsyncDisposable
     /// </summary>
     [Parameter] public EventCallback OnReady { get; set; }
 
+    /// <summary>
+    /// Raised when <see cref="SwiperOptions.Virtual"/> wants a different span of slides rendered.
+    /// Render exactly that span; Swiper renders nothing itself while this is handled.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is Swiper's <c>renderExternal</c> hook, which exists so a framework can keep ownership
+    /// of the DOM: Swiper works out which slides are needed and where the window sits, and hands
+    /// both over instead of creating and removing slide elements. Set
+    /// <see cref="SwiperVirtualOptions.SlideCount"/> so it knows how far the collection goes, give
+    /// each rendered <see cref="SwiperSlide"/> its <see cref="SwiperSlide.VirtualIndex"/>, and leave
+    /// the window's offset alone - the wrapper applies it to the slides for you.
+    /// </para>
+    /// <para>
+    /// Re-measuring is the wrapper's too: the window arrives before Blazor has rendered it, so
+    /// Swiper is told to skip its own post-render pass and the wrapper runs it on the render that
+    /// follows, once the slides it measures actually exist.
+    /// </para>
+    /// </remarks>
+    [Parameter] public EventCallback<SwiperVirtualWindow> OnVirtualRender { get; set; }
+
     /// <summary>Attributes forwarded to the underlying <c>&lt;swiper-container&gt;</c> element.</summary>
     [Parameter(CaptureUnmatchedValues = true)]
     public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
@@ -148,6 +169,9 @@ public partial class Swiper : IAsyncDisposable
     private bool _isHostIndexChangePending;
     private bool _isAutoplayRunning;
     private bool _isHostAutoplayChangePending;
+
+    private string? _virtualOffsetStyle;
+    private bool _isVirtualRemeasurePending;
 
     private string? _appliedOptionsJson;
     private string[] _subscribedEvents = Array.Empty<string>();
@@ -204,6 +228,15 @@ public partial class Swiper : IAsyncDisposable
             return;
         }
 
+        if (_isVirtualRemeasurePending)
+        {
+            _isVirtualRemeasurePending = false;
+
+            // Swiper skipped its own post-render pass because the window was still only a promise
+            // when it handed it over. The slides exist now, so this is the moment it can measure.
+            await Update();
+        }
+
         await WireCompanionsAsync();
     }
 
@@ -226,7 +259,8 @@ public partial class Swiper : IAsyncDisposable
             options,
             _selfReference,
             _subscribedEvents,
-            EventThrottle?.TotalMilliseconds ?? 0);
+            EventThrottle?.TotalMilliseconds ?? 0,
+            OnVirtualRender.HasDelegate);
 
         // The host's own opening position belongs before the reveal, so that a slider told to start
         // somewhere other than slide 0 is never seen at slide 0 first.
@@ -410,6 +444,38 @@ public partial class Swiper : IAsyncDisposable
 
         await ActiveIndexChanged.InvokeAsync(activeIndex);
     }
+
+    /// <summary>
+    /// Interop callback for Swiper's virtual <c>renderExternal</c> hook. Not intended to be called
+    /// from your code.
+    /// </summary>
+    /// <param name="from">Index of the first slide Swiper wants rendered.</param>
+    /// <param name="to">Index of the last slide Swiper wants rendered, inclusive.</param>
+    /// <param name="offset">How far along the track the window sits, in px.</param>
+    /// <param name="offsetProperty">The CSS property that offset belongs on, which direction and text direction decide.</param>
+    [JSInvokable]
+    public async Task OnVirtualRenderInternal(int from, int to, double offset, string offsetProperty)
+    {
+        _virtualOffsetStyle = FormattableString.Invariant($"{offsetProperty}:{offset}px");
+        _isVirtualRemeasurePending = true;
+
+        await OnVirtualRender.InvokeAsync(new SwiperVirtualWindow
+        {
+            From = from,
+            To = to,
+            Offset = offset
+        });
+
+        // The host's own re-render is not enough: the offset above lives on this component, and the
+        // slides only pick it up when this one renders them again.
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// The offset the current virtual window sits at, as a style declaration for a slide to carry.
+    /// Null whenever the slider is not rendering a virtual window.
+    /// </summary>
+    internal string? VirtualOffsetStyle => _virtualOffsetStyle;
 
     private readonly List<SwiperSlide> _registeredSlides = new();
 

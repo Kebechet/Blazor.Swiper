@@ -142,6 +142,35 @@ export function isInitOnlyParam(name) {
 }
 
 /**
+ * The virtual module's options rewritten for a host that renders the window itself.
+ *
+ * Three things have to be true for that arrangement, and none of them can be expressed from .NET:
+ * `renderExternal` is a function, so it cannot cross the interop boundary as JSON and is installed
+ * here; `renderExternalUpdate` has to be false, because Swiper's post-render pass would otherwise
+ * measure a window Blazor has not rendered yet - the call announcing it only *starts* a render; and
+ * `slides` has to be an array, because Swiper reads its length to know where the collection ends,
+ * so the count the caller gave is expanded into one. Its contents are never read - Swiper hands the
+ * host indices, and the host owns what they mean.
+ *
+ * Returns the options unchanged when the module is off or the host is not rendering, so the plain
+ * `renderSlide` path stays exactly as Swiper ships it.
+ */
+export function virtualExternalOptions(virtual, renderExternal) {
+    if (!virtual || typeof virtual !== "object" || !renderExternal) {
+        return virtual;
+    }
+
+    const { slideCount, ...rest } = virtual;
+
+    return {
+        ...rest,
+        slides: Array.from({ length: slideCount ?? 0 }, (_, index) => index),
+        renderExternal,
+        renderExternalUpdate: false
+    };
+}
+
+/**
  * A speed argument as Swiper wants it.
  *
  * Swiper reads a missing argument as "use params.speed", but .NET sends an unset `int?` across

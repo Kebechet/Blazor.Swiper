@@ -132,3 +132,27 @@ public sealed record SwiperState
     /// <summary>The active slide's zoom factor, 1 when unzoomed.</summary>
     public double ZoomScale { get; init; } = 1;
 }
+
+/// <summary>
+/// The span of slides Swiper wants rendered, when the host is doing the rendering.
+/// </summary>
+/// <remarks>
+/// Handed over by <see cref="Swiper.OnVirtualRender"/>. Render exactly <see cref="From"/> through
+/// <see cref="To"/> inclusive, each in a <see cref="SwiperSlide"/> carrying its own
+/// <see cref="SwiperSlide.VirtualIndex"/>; the wrapper applies <see cref="Offset"/> to those slides
+/// itself, which is what keeps a window of a few elements sitting where the whole collection would
+/// have been.
+/// </remarks>
+public sealed record SwiperVirtualWindow
+{
+    /// <summary>Index of the first slide to render.</summary>
+    public int From { get; init; }
+
+    /// <summary>Index of the last slide to render, inclusive.</summary>
+    public int To { get; init; }
+
+    /// <summary>
+    /// How far along the track the window sits, in px. Applied by the wrapper, not by the host.
+    /// </summary>
+    public double Offset { get; init; }
+}
