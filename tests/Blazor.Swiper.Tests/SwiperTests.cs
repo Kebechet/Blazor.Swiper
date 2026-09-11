@@ -1,5 +1,7 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using Shouldly;
 using Xunit;
 using TestContext = Bunit.TestContext;
@@ -246,5 +248,154 @@ public sealed class SwiperTests : IDisposable
 
         // Assert
         _module.Invocations.ShouldContain(x => x.Identifier == "destroy");
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhenDestroyThrowsJsException_DoesNotThrow()
+    {
+        // Arrange
+        var cut = _context.RenderComponent<Swiper>();
+        _module
+            .SetupVoid("destroy", _ => true)
+            .SetException(new JSException("JS object instance with ID 42 does not exist (has it been disposed?)."));
+
+        // Act
+        var dispose = async () => await cut.Instance.DisposeAsync();
+
+        // Assert
+        await dispose.ShouldNotThrowAsync();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhenCalledTwice_DestroysOnce()
+    {
+        // Arrange
+        var cut = _context.RenderComponent<Swiper>();
+
+        // Act
+        await cut.Instance.DisposeAsync();
+        await cut.Instance.DisposeAsync();
+
+        // Assert
+        _module.Invocations.Count(x => x.Identifier == "destroy").ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhenDestroyThrows_StillReleasesTheModule()
+    {
+        // Arrange
+        using var context = new TestContext();
+        var module = new RecordingModule(new JSException("a real error inside destroy"));
+        context.Services.AddSingleton<IJSRuntime>(new StubJsRuntime(module));
+
+        var cut = context.RenderComponent<Swiper>();
+
+        // Act
+        await cut.Instance.DisposeAsync();
+
+        // Assert
+        module.WasDestroyAttempted.ShouldBeTrue();
+        module.WasReleaseAttempted.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DisposeAsync_WhenReleasingTheModuleThrows_DoesNotThrow(bool isCircuitDisconnected)
+    {
+        // Arrange
+        using var context = new TestContext();
+        Exception releaseException = isCircuitDisconnected
+            ? new JSDisconnectedException("the circuit is gone")
+            : new JSException("JS object instance with ID 42 does not exist (has it been disposed?).");
+
+        var module = new RecordingModule(releaseException: releaseException);
+        context.Services.AddSingleton<IJSRuntime>(new StubJsRuntime(module));
+
+        var cut = context.RenderComponent<Swiper>();
+
+        // Act
+        var dispose = async () => await cut.Instance.DisposeAsync();
+
+        // Assert
+        await dispose.ShouldNotThrowAsync();
+        module.WasReleaseAttempted.ShouldBeTrue();
+    }
+
+    private sealed class RecordingModule : IJSObjectReference
+    {
+        private readonly Exception? _destroyException;
+        private readonly Exception? _releaseException;
+
+        public RecordingModule(Exception? destroyException = null, Exception? releaseException = null)
+        {
+            _destroyException = destroyException;
+            _releaseException = releaseException;
+        }
+
+        public bool WasDestroyAttempted { get; private set; }
+
+        public bool WasReleaseAttempted { get; private set; }
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+        {
+            if (identifier == "destroy")
+            {
+                WasDestroyAttempted = true;
+
+                if (_destroyException is not null)
+                {
+                    throw _destroyException;
+                }
+            }
+
+            return ValueTask.FromResult<TValue>(default!);
+        }
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            return InvokeAsync<TValue>(identifier, args);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            WasReleaseAttempted = true;
+
+            if (_releaseException is not null)
+            {
+                throw _releaseException;
+            }
+
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// bUnit refuses to hand a custom <see cref="IJSObjectReference"/> back from its own setup API, so
+    /// the module the component imports is supplied by replacing the runtime itself.
+    /// </summary>
+    private sealed class StubJsRuntime : IJSRuntime
+    {
+        private readonly IJSObjectReference _module;
+
+        public StubJsRuntime(IJSObjectReference module)
+        {
+            _module = module;
+        }
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+        {
+            if (identifier == "import")
+            {
+                return ValueTask.FromResult((TValue)_module);
+            }
+
+            return ValueTask.FromResult<TValue>(default!);
+        }
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            return InvokeAsync<TValue>(identifier, args);
+        }
     }
 }

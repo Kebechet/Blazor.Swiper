@@ -528,17 +528,36 @@ public partial class Swiper : IAsyncDisposable
 
         _awaitedCompanions.Clear();
 
-        try
+        var module = _module;
+        _module = null;
+
+        if (module is not null)
         {
-            if (_module is not null)
+            try
             {
-                await _module.InvokeVoidAsync("destroy", _element);
-                await _module.DisposeAsync();
+                await module.InvokeVoidAsync("destroy", _element);
             }
-        }
-        catch (JSDisconnectedException)
-        {
-            // Circuit already gone - nothing to clean up on the JS side.
+            catch (Exception exception) when (exception is JSDisconnectedException or JSException)
+            {
+                // The JS side is already gone, so there is nothing left to tear down there. Blazor
+                // Server says so with JSDisconnectedException; a WebView or WASM host has no circuit to
+                // disconnect and reports the module reference missing from the interop registry
+                // instead, which arrives as a plain JSException. Letting either escape strands
+                // _selfReference below and surfaces from Renderer.Dispose as an unobserved task
+                // exception.
+            }
+
+            try
+            {
+                // Released on its own rather than after a successful destroy: a genuine JS error inside
+                // destroy arrives as JSException too, and skipping this on that path would leave the
+                // module registered for the lifetime of the page.
+                await module.DisposeAsync();
+            }
+            catch (Exception exception) when (exception is JSDisconnectedException or JSException)
+            {
+                // Nothing left to release either.
+            }
         }
 
         _selfReference?.Dispose();
