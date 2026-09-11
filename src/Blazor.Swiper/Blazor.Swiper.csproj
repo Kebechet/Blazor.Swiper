@@ -22,7 +22,7 @@
     <PackageIcon>icon.png</PackageIcon>
     <PackageTags>blazor;swiper;carousel;slider;slideshow;touch;swipe;webcomponent</PackageTags>
     <!-- First three parts track the bundled Swiper release; the fourth is this wrapper's own revision. -->
-    <Version>14.0.6.3</Version>
+    <Version>14.0.6.4</Version>
     <PackageReleaseNotes>Adds OnVirtualRender, which hands Swiper's virtual module to Blazor. Swiper normally renders virtual slides itself, creating and removing slide elements a framework thinks it owns; OnVirtualRender is Swiper's renderExternal hook, so Swiper works out which slides are needed and where the window sits, hands both over, and touches no element at all. Set SwiperVirtualOptions.SlideCount, render the SwiperVirtualWindow's From..To with a VirtualIndex on each slide, and the wrapper does the rest: it applies the window's offset to those slides, and runs Swiper's post-render measurement on the render after the window arrives, once the slides it measures exist. A collection of two hundred slides keeps three to five elements in the DOM, and the window follows a real swipe as well as a programmatic move. Purely additive - with no handler the module behaves exactly as it did. Same vendored Swiper 14.0.6 bundle.</PackageReleaseNotes>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IncludeSymbols>true</IncludeSymbols>

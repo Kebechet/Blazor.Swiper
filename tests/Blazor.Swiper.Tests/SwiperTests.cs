@@ -1,5 +1,6 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 using Shouldly;
 using Xunit;
 using TestContext = Bunit.TestContext;
@@ -246,5 +247,35 @@ public sealed class SwiperTests : IDisposable
 
         // Assert
         _module.Invocations.ShouldContain(x => x.Identifier == "destroy");
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhenDestroyThrowsJsException_DoesNotThrow()
+    {
+        // Arrange
+        var cut = _context.RenderComponent<Swiper>();
+        _module
+            .SetupVoid("destroy", _ => true)
+            .SetException(new JSException("JS object instance with ID 42 does not exist (has it been disposed?)."));
+
+        // Act
+        var dispose = async () => await cut.Instance.DisposeAsync();
+
+        // Assert
+        await dispose.ShouldNotThrowAsync();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhenCalledTwice_DestroysOnce()
+    {
+        // Arrange
+        var cut = _context.RenderComponent<Swiper>();
+
+        // Act
+        await cut.Instance.DisposeAsync();
+        await cut.Instance.DisposeAsync();
+
+        // Assert
+        _module.Invocations.Count(x => x.Identifier == "destroy").ShouldBe(1);
     }
 }
