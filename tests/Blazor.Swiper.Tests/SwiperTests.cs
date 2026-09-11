@@ -295,28 +295,58 @@ public sealed class SwiperTests : IDisposable
 
         // Assert
         module.WasDestroyAttempted.ShouldBeTrue();
-        module.IsDisposed.ShouldBeTrue();
+        module.WasReleaseAttempted.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DisposeAsync_WhenReleasingTheModuleThrows_DoesNotThrow(bool isCircuitDisconnected)
+    {
+        // Arrange
+        using var context = new TestContext();
+        Exception releaseException = isCircuitDisconnected
+            ? new JSDisconnectedException("the circuit is gone")
+            : new JSException("JS object instance with ID 42 does not exist (has it been disposed?).");
+
+        var module = new RecordingModule(releaseException: releaseException);
+        context.Services.AddSingleton<IJSRuntime>(new StubJsRuntime(module));
+
+        var cut = context.RenderComponent<Swiper>();
+
+        // Act
+        var dispose = async () => await cut.Instance.DisposeAsync();
+
+        // Assert
+        await dispose.ShouldNotThrowAsync();
+        module.WasReleaseAttempted.ShouldBeTrue();
     }
 
     private sealed class RecordingModule : IJSObjectReference
     {
-        private readonly Exception _destroyException;
+        private readonly Exception? _destroyException;
+        private readonly Exception? _releaseException;
 
-        public RecordingModule(Exception destroyException)
+        public RecordingModule(Exception? destroyException = null, Exception? releaseException = null)
         {
             _destroyException = destroyException;
+            _releaseException = releaseException;
         }
 
         public bool WasDestroyAttempted { get; private set; }
 
-        public bool IsDisposed { get; private set; }
+        public bool WasReleaseAttempted { get; private set; }
 
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
         {
             if (identifier == "destroy")
             {
                 WasDestroyAttempted = true;
-                throw _destroyException;
+
+                if (_destroyException is not null)
+                {
+                    throw _destroyException;
+                }
             }
 
             return ValueTask.FromResult<TValue>(default!);
@@ -329,7 +359,13 @@ public sealed class SwiperTests : IDisposable
 
         public ValueTask DisposeAsync()
         {
-            IsDisposed = true;
+            WasReleaseAttempted = true;
+
+            if (_releaseException is not null)
+            {
+                throw _releaseException;
+            }
+
             return ValueTask.CompletedTask;
         }
     }
