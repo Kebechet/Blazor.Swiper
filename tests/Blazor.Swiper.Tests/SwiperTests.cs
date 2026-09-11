@@ -1,5 +1,6 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Shouldly;
 using Xunit;
@@ -277,5 +278,88 @@ public sealed class SwiperTests : IDisposable
 
         // Assert
         _module.Invocations.Count(x => x.Identifier == "destroy").ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhenDestroyThrows_StillReleasesTheModule()
+    {
+        // Arrange
+        using var context = new TestContext();
+        var module = new RecordingModule(new JSException("a real error inside destroy"));
+        context.Services.AddSingleton<IJSRuntime>(new StubJsRuntime(module));
+
+        var cut = context.RenderComponent<Swiper>();
+
+        // Act
+        await cut.Instance.DisposeAsync();
+
+        // Assert
+        module.WasDestroyAttempted.ShouldBeTrue();
+        module.IsDisposed.ShouldBeTrue();
+    }
+
+    private sealed class RecordingModule : IJSObjectReference
+    {
+        private readonly Exception _destroyException;
+
+        public RecordingModule(Exception destroyException)
+        {
+            _destroyException = destroyException;
+        }
+
+        public bool WasDestroyAttempted { get; private set; }
+
+        public bool IsDisposed { get; private set; }
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+        {
+            if (identifier == "destroy")
+            {
+                WasDestroyAttempted = true;
+                throw _destroyException;
+            }
+
+            return ValueTask.FromResult<TValue>(default!);
+        }
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            return InvokeAsync<TValue>(identifier, args);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            IsDisposed = true;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// bUnit refuses to hand a custom <see cref="IJSObjectReference"/> back from its own setup API, so
+    /// the module the component imports is supplied by replacing the runtime itself.
+    /// </summary>
+    private sealed class StubJsRuntime : IJSRuntime
+    {
+        private readonly IJSObjectReference _module;
+
+        public StubJsRuntime(IJSObjectReference module)
+        {
+            _module = module;
+        }
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+        {
+            if (identifier == "import")
+            {
+                return ValueTask.FromResult((TValue)_module);
+            }
+
+            return ValueTask.FromResult<TValue>(default!);
+        }
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            return InvokeAsync<TValue>(identifier, args);
+        }
     }
 }
