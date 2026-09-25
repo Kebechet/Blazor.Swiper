@@ -39,6 +39,7 @@ function hostState(element) {
         isUserDriven: false,
         intendedIndex: null,
         anchorIndex: null,
+        anchorSwiper: null,
         anchorObserver: null,
         slideSetObserver: null,
         slideResizeObserver: null,
@@ -57,6 +58,23 @@ function hostState(element) {
 // the host keeps pointing at the gutted instance, and anything that reads it throws.
 function liveSwiper(element) {
     const swiper = element?.swiper;
+    return isLiveSwiper(element, swiper) ? swiper : null;
+}
+
+// Whether `swiper` is still the slider its host is showing. Deferred work - an observer, an animation frame,
+// a listener, an awaited companion - holds on to the instance it was set up for, and by the time it runs that
+// instance may have been destroyed (the container left the DOM) or replaced by a new one on the same host.
+// Acting on either is wrong: a destroyed instance throws on its missing params, and a replaced one moves a
+// slider nobody can see while the one on screen goes uncorrected.
+function isLiveSwiper(element, swiper) {
+    return !!swiper && !swiper.destroyed && element?.swiper === swiper;
+}
+
+// The instance that raised a Swiper event, which rides in detail[0]. It is the one to read rather than
+// element.swiper: while a replacement is being constructed it announces its own events, and the host still
+// names its destroyed predecessor until the constructor returns.
+function emitterOf(event) {
+    const swiper = Array.isArray(event.detail) ? event.detail[0] : null;
     return swiper && !swiper.destroyed ? swiper : null;
 }
 
@@ -150,18 +168,21 @@ function withVirtualExternal(element, options, isVirtualExternal) {
 // what makes the two sliders order-independent: an @ref is still null while the sibling's markup is
 // being evaluated, but a selector can simply wait for whichever slider initializes last.
 async function wireCompanionsFromSelectors(element, swiper) {
+    // Both selectors are read before anything is awaited: the owner can be destroyed while it waits for a
+    // companion, and a destroyed instance has no params left to read the second selector from.
     const thumbsSelector = selectorOf(swiper.params.thumbs?.swiper);
+    const controlSelector = selectorOf(swiper.params.controller?.control);
+
     if (thumbsSelector) {
         const target = await resolveSwiperElement(thumbsSelector);
-        if (target && liveSwiper(element)) {
+        if (target && isLiveSwiper(element, swiper)) {
             setThumbs(element, target);
         }
     }
 
-    const controlSelector = selectorOf(swiper.params.controller?.control);
     if (controlSelector) {
         const target = await resolveSwiperElement(controlSelector);
-        if (target && liveSwiper(element)) {
+        if (target && isLiveSwiper(element, swiper)) {
             setController(element, target);
         }
     }
@@ -288,14 +309,15 @@ function attachInternalListeners(element) {
         hostState(element).isUserDriven = true;
     });
 
-    listen(element, "transitionEnd", () => {
-        if (!element.swiper) {
+    listen(element, "transitionEnd", (event) => {
+        const swiper = emitterOf(event);
+        if (!swiper) {
             return;
         }
 
         const state = hostState(element);
         // Not every transitionend belongs to the host's move - see shouldDisarmIntent.
-        if (shouldDisarmIntent(element.swiper.realIndex, state.intendedIndex, state.isUserDriven)) {
+        if (shouldDisarmIntent(swiper.realIndex, state.intendedIndex, state.isUserDriven)) {
             state.intendedIndex = null;
         }
         state.isUserDriven = false;
@@ -303,20 +325,21 @@ function attachInternalListeners(element) {
 
     // Always forwarded rather than subscribed to, because the component's ActiveIndex - and so the
     // two-way binding built on it - has to stay in step whether or not the host wired a callback.
-    listen(element, "slideChange", () => {
-        if (!element.swiper) {
+    listen(element, "slideChange", (event) => {
+        const swiper = emitterOf(event);
+        if (!swiper) {
             return;
         }
 
         // realIndex is the logical slide index; in loop mode it differs from activeIndex (which counts
         // the shifted/duplicated slides). It equals activeIndex when loop is off, so it is always correct.
-        invoke(element, "OnSlideChangeInternal", element.swiper.realIndex, hostState(element).isUserDriven);
+        invoke(element, "OnSlideChangeInternal", swiper.realIndex, hostState(element).isUserDriven);
     });
 }
 
 function subscribe(element, name) {
     listen(element, name, (event) => {
-        const swiper = element.swiper;
+        const swiper = emitterOf(event);
 
         // beforeInit, init and afterInit are raised from inside the Swiper constructor, which is the
         // expression whose result becomes element.swiper - so for those three there is no instance on
@@ -568,7 +591,7 @@ function attachIntendedIndexGuard(element, swiper) {
         }
 
         requestAnimationFrame(() => {
-            if (!liveSwiper(element)) {
+            if (!isLiveSwiper(element, swiper)) {
                 return;
             }
             if (shouldReanchor(swiper.realIndex, state.intendedIndex, state.isUserDriven)) {
@@ -596,22 +619,46 @@ function attachLiveAutoHeight(element, swiper) {
         swiper.wrapperEl.style.overflowY = "hidden";
     }
 
+    // Removing the container destroys this instance without the interop's destroy() ever running, so nothing
+    // else disconnects these observers. Each callback stops them once the instance is no longer the live one -
+    // only these two, since the state may already hold a later instance's by then.
+    let slideSetObserver = null;
+    let slideResizeObserver = null;
+    const stopObserving = () => {
+        slideSetObserver?.disconnect();
+        slideResizeObserver?.disconnect();
+    };
+
+    const updateHeight = () => {
+        if (!isLiveSwiper(element, swiper)) {
+            stopObserving();
+            return;
+        }
+        swiper.updateAutoHeight(0);
+    };
+
     const observeSlides = () => {
-        state.slideResizeObserver?.disconnect();
-        state.slideResizeObserver = new ResizeObserver(() => swiper.updateAutoHeight(0));
+        if (!isLiveSwiper(element, swiper)) {
+            stopObserving();
+            return;
+        }
+        slideResizeObserver?.disconnect();
+        slideResizeObserver = new ResizeObserver(updateHeight);
+        state.slideResizeObserver = slideResizeObserver;
         for (const slide of swiper.slides) {
-            state.slideResizeObserver.observe(slide);
+            slideResizeObserver.observe(slide);
         }
         swiper.updateAutoHeight(0);
     };
 
     // A slide added or removed by the host is a new set to observe, and a new height to measure.
-    state.slideSetObserver = new MutationObserver(observeSlides);
-    state.slideSetObserver.observe(swiper.slidesEl, { childList: true });
+    slideSetObserver = new MutationObserver(observeSlides);
+    state.slideSetObserver = slideSetObserver;
+    slideSetObserver.observe(swiper.slidesEl, { childList: true });
 
     // The ResizeObserver reacts to a slide's size changing, not to a different slide becoming active - and
     // in cssMode Swiper's own transition-driven autoHeight never runs, since it has no transition events.
-    listen(element, "slideChange", () => swiper.updateAutoHeight(0));
+    listen(element, "slideChange", updateHeight);
 
     observeSlides();
 }
@@ -655,22 +702,28 @@ export function armAnchor(element, index) {
 
     const state = hostState(element);
     if (!state.anchorObserver) {
+        // Created once and reused for every arm, so the instance to move is read from the state at delivery
+        // rather than captured here - otherwise a slider replaced since the first arm would never be
+        // corrected, and the correction would go to its destroyed predecessor instead.
         state.anchorObserver = new MutationObserver(() => {
             const anchorIndex = state.anchorIndex;
+            const anchorSwiper = state.anchorSwiper;
             if (anchorIndex === null || anchorIndex === undefined) {
                 return;
             }
             // One-shot: only the mutation this was armed for should move the slider.
             state.anchorIndex = null;
+            state.anchorSwiper = null;
             state.anchorObserver.disconnect();
-            if (swiper.destroyed) {
+            if (!isLiveSwiper(element, anchorSwiper)) {
                 return;
             }
-            applyAnchor(swiper, anchorIndex);
+            applyAnchor(anchorSwiper, anchorIndex);
         });
     }
 
     state.anchorIndex = index;
+    state.anchorSwiper = swiper;
     state.anchorObserver.observe(swiper.slidesEl, { childList: true });
 }
 
