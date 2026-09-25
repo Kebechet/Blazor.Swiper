@@ -51,6 +51,15 @@ function hostState(element) {
     return element.__blazorSwiper;
 }
 
+// The element's Swiper, or null when there is none to call. A destroyed instance counts as none:
+// <swiper-container> destroys its Swiper when it leaves the DOM, and Swiper's destroy strips every own
+// property (params included) but clears `.swiper` only on the shadow `.swiper` div it was built on - so
+// the host keeps pointing at the gutted instance, and anything that reads it throws.
+function liveSwiper(element) {
+    const swiper = element?.swiper;
+    return swiper && !swiper.destroyed ? swiper : null;
+}
+
 export async function initialize(element, options, dotNetRef, subscribedEvents, eventThrottleMs, isVirtualExternal) {
     // The host can tear the slider down before this runs - a conditionally rendered pager collapsing on the
     // very tap that scheduled it - and the reference then marshals to null. Awaiting the element definition
@@ -87,7 +96,7 @@ export async function initialize(element, options, dotNetRef, subscribedEvents, 
     // first one" guard, and in a two-way binding it reports slide 0 back before the host has settled.
     element.initialize();
 
-    const swiper = element?.swiper;
+    const swiper = liveSwiper(element);
 
     for (const name of subscriptions.filter(name => !isInitPhaseEvent(name))) {
         subscribe(element, name);
@@ -144,7 +153,7 @@ async function wireCompanionsFromSelectors(element, swiper) {
     const thumbsSelector = selectorOf(swiper.params.thumbs?.swiper);
     if (thumbsSelector) {
         const target = await resolveSwiperElement(thumbsSelector);
-        if (target && element.swiper) {
+        if (target && liveSwiper(element)) {
             setThumbs(element, target);
         }
     }
@@ -152,7 +161,7 @@ async function wireCompanionsFromSelectors(element, swiper) {
     const controlSelector = selectorOf(swiper.params.controller?.control);
     if (controlSelector) {
         const target = await resolveSwiperElement(controlSelector);
-        if (target && element.swiper) {
+        if (target && liveSwiper(element)) {
             setController(element, target);
         }
     }
@@ -172,7 +181,7 @@ function resolveSwiperElement(selector) {
         return Promise.resolve(null);
     }
 
-    if (target.swiper) {
+    if (liveSwiper(target)) {
         return Promise.resolve(target);
     }
 
@@ -209,7 +218,7 @@ function applyOptions(element, options) {
  * back to .NET rather than silently dropped.
  */
 export function updateOptions(element, options) {
-    if (!element?.swiper) {
+    if (!liveSwiper(element)) {
         return [];
     }
 
@@ -469,7 +478,7 @@ function slideIndexOf(swiper, slideEl) {
 // --- programmatic navigation -------------------------------------------------------------------------
 
 export function slideTo(element, index, speed) {
-    const swiper = element?.swiper;
+    const swiper = liveSwiper(element);
     if (!swiper) {
         return;
     }
@@ -524,23 +533,23 @@ function scrollToSlide(swiper, index, speed) {
 }
 
 export function slideNext(element, speed) {
-    element?.swiper?.slideNext(optionalSpeed(speed));
+    liveSwiper(element)?.slideNext(optionalSpeed(speed));
 }
 
 export function slidePrev(element, speed) {
-    element?.swiper?.slidePrev(optionalSpeed(speed));
+    liveSwiper(element)?.slidePrev(optionalSpeed(speed));
 }
 
 export function slideReset(element, speed) {
-    element?.swiper?.slideReset(optionalSpeed(speed));
+    liveSwiper(element)?.slideReset(optionalSpeed(speed));
 }
 
 export function slideToClosest(element, speed) {
-    element?.swiper?.slideToClosest(optionalSpeed(speed));
+    liveSwiper(element)?.slideToClosest(optionalSpeed(speed));
 }
 
 export function slideToClickedSlide(element) {
-    element?.swiper?.slideToClickedSlide();
+    liveSwiper(element)?.slideToClickedSlide();
 }
 
 // Swiper's resize handling ends by re-anchoring onto the index it holds, and it defers that by a frame.
@@ -559,7 +568,7 @@ function attachIntendedIndexGuard(element, swiper) {
         }
 
         requestAnimationFrame(() => {
-            if (!element.swiper) {
+            if (!liveSwiper(element)) {
                 return;
             }
             if (shouldReanchor(swiper.realIndex, state.intendedIndex, state.isUserDriven)) {
@@ -639,7 +648,7 @@ function applyAnchor(swiper, index) {
 // but before the next paint - so the correction is guaranteed to land in the same frame as the mutation
 // that caused it. This is a platform ordering guarantee rather than a timing race.
 export function armAnchor(element, index) {
-    const swiper = element?.swiper;
+    const swiper = liveSwiper(element);
     if (!swiper) {
         return;
     }
@@ -654,6 +663,9 @@ export function armAnchor(element, index) {
             // One-shot: only the mutation this was armed for should move the slider.
             state.anchorIndex = null;
             state.anchorObserver.disconnect();
+            if (swiper.destroyed) {
+                return;
+            }
             applyAnchor(swiper, anchorIndex);
         });
     }
@@ -663,7 +675,7 @@ export function armAnchor(element, index) {
 }
 
 export function updateAndAnchor(element, index) {
-    const swiper = element?.swiper;
+    const swiper = liveSwiper(element);
     if (!swiper) {
         return;
     }
@@ -673,27 +685,27 @@ export function updateAndAnchor(element, index) {
 // --- updating ----------------------------------------------------------------------------------------
 
 export function update(element) {
-    element?.swiper?.update();
+    liveSwiper(element)?.update();
 }
 
 export function updateSize(element) {
-    element?.swiper?.updateSize();
+    liveSwiper(element)?.updateSize();
 }
 
 export function updateSlides(element) {
-    element?.swiper?.updateSlides();
+    liveSwiper(element)?.updateSlides();
 }
 
 export function updateProgress(element) {
-    element?.swiper?.updateProgress();
+    liveSwiper(element)?.updateProgress();
 }
 
 export function updateSlidesClasses(element) {
-    element?.swiper?.updateSlidesClasses();
+    liveSwiper(element)?.updateSlidesClasses();
 }
 
 export function updateAutoHeight(element, speed) {
-    element?.swiper?.updateAutoHeight(speed ?? 0);
+    liveSwiper(element)?.updateAutoHeight(speed ?? 0);
 }
 
 // --- state -------------------------------------------------------------------------------------------
@@ -701,7 +713,7 @@ export function updateAutoHeight(element, speed) {
 // One read of everything a host might otherwise keep its own copy of. Gathered in a single call because
 // each separate read would be its own interop round trip, and on Blazor Server that is a network hop.
 export function getState(element) {
-    const swiper = element?.swiper;
+    const swiper = liveSwiper(element);
     if (!swiper) {
         return null;
     }
@@ -733,138 +745,141 @@ export function getState(element) {
 // --- locks and enablement ----------------------------------------------------------------------------
 
 export function setAllowSlideNext(element, value) {
-    if (element?.swiper) {
-        element.swiper.allowSlideNext = value;
+    const swiper = liveSwiper(element);
+    if (swiper) {
+        swiper.allowSlideNext = value;
     }
 }
 
 export function setAllowSlidePrev(element, value) {
-    if (element?.swiper) {
-        element.swiper.allowSlidePrev = value;
+    const swiper = liveSwiper(element);
+    if (swiper) {
+        swiper.allowSlidePrev = value;
     }
 }
 
 export function setAllowTouchMove(element, value) {
-    if (element?.swiper) {
-        element.swiper.allowTouchMove = value;
+    const swiper = liveSwiper(element);
+    if (swiper) {
+        swiper.allowTouchMove = value;
     }
 }
 
 export function enable(element) {
-    element?.swiper?.enable();
+    liveSwiper(element)?.enable();
 }
 
 export function disable(element) {
-    element?.swiper?.disable();
+    liveSwiper(element)?.disable();
 }
 
 export function setProgress(element, progress, speed) {
-    element?.swiper?.setProgress(progress, optionalSpeed(speed));
+    liveSwiper(element)?.setProgress(progress, optionalSpeed(speed));
 }
 
 export function changeDirection(element, direction) {
-    element?.swiper?.changeDirection(direction, true);
+    liveSwiper(element)?.changeDirection(direction, true);
 }
 
 export function changeLanguageDirection(element, direction) {
-    element?.swiper?.changeLanguageDirection(direction);
+    liveSwiper(element)?.changeLanguageDirection(direction);
 }
 
 export function translateTo(element, translate, speed) {
-    element?.swiper?.translateTo(translate, speed ?? 0);
+    liveSwiper(element)?.translateTo(translate, speed ?? 0);
 }
 
 export function getTranslate(element) {
-    return element?.swiper?.getTranslate() ?? 0;
+    return liveSwiper(element)?.getTranslate() ?? 0;
 }
 
 export function detachEvents(element) {
-    element?.swiper?.detachEvents();
+    liveSwiper(element)?.detachEvents();
 }
 
 export function attachEvents(element) {
-    element?.swiper?.attachEvents();
+    liveSwiper(element)?.attachEvents();
 }
 
 // --- module controllers -------------------------------------------------------------------------------
 
 export function startAutoplay(element) {
-    element?.swiper?.autoplay?.start();
+    liveSwiper(element)?.autoplay?.start();
 }
 
 export function stopAutoplay(element) {
-    element?.swiper?.autoplay?.stop();
+    liveSwiper(element)?.autoplay?.stop();
 }
 
 export function pauseAutoplay(element, speed) {
-    element?.swiper?.autoplay?.pause(optionalSpeed(speed));
+    liveSwiper(element)?.autoplay?.pause(optionalSpeed(speed));
 }
 
 export function resumeAutoplay(element) {
-    element?.swiper?.autoplay?.resume();
+    liveSwiper(element)?.autoplay?.resume();
 }
 
 export function zoomIn(element, ratio) {
-    element?.swiper?.zoom?.in(optionalSpeed(ratio));
+    liveSwiper(element)?.zoom?.in(optionalSpeed(ratio));
 }
 
 export function zoomOut(element) {
-    element?.swiper?.zoom?.out();
+    liveSwiper(element)?.zoom?.out();
 }
 
 export function zoomToggle(element) {
-    element?.swiper?.zoom?.toggle();
+    liveSwiper(element)?.zoom?.toggle();
 }
 
 export function enableZoom(element) {
-    element?.swiper?.zoom?.enable();
+    liveSwiper(element)?.zoom?.enable();
 }
 
 export function disableZoom(element) {
-    element?.swiper?.zoom?.disable();
+    liveSwiper(element)?.zoom?.disable();
 }
 
 export function enableKeyboard(element) {
-    element?.swiper?.keyboard?.enable();
+    liveSwiper(element)?.keyboard?.enable();
 }
 
 export function disableKeyboard(element) {
-    element?.swiper?.keyboard?.disable();
+    liveSwiper(element)?.keyboard?.disable();
 }
 
 export function enableMousewheel(element) {
-    element?.swiper?.mousewheel?.enable();
+    liveSwiper(element)?.mousewheel?.enable();
 }
 
 export function disableMousewheel(element) {
-    element?.swiper?.mousewheel?.disable();
+    liveSwiper(element)?.mousewheel?.disable();
 }
 
 // Manipulation writes slide elements Blazor did not render and does not know about, so the next render
 // that touches the slide collection will fight it. It is here as an escape hatch for hosts that own the
 // slider outright; ArmAnchor and UpdateAndAnchor are the route for slides Blazor renders.
 export function appendSlide(element, markup) {
-    element?.swiper?.appendSlide(markup);
+    liveSwiper(element)?.appendSlide(markup);
 }
 
 export function prependSlide(element, markup) {
-    element?.swiper?.prependSlide(markup);
+    liveSwiper(element)?.prependSlide(markup);
 }
 
 export function addSlide(element, index, markup) {
-    element?.swiper?.addSlide(index, markup);
+    liveSwiper(element)?.addSlide(index, markup);
 }
 
 export function removeSlide(element, index) {
-    element?.swiper?.removeSlide(index);
+    liveSwiper(element)?.removeSlide(index);
 }
 
 export function removeAllSlides(element) {
-    element?.swiper?.removeAllSlides();
+    liveSwiper(element)?.removeAllSlides();
 }
 
 export function updateVirtual(element, force) {
-    element?.swiper?.virtual?.update(force === true);
+    liveSwiper(element)?.virtual?.update(force === true);
 }
 
 // --- cross-instance wiring ----------------------------------------------------------------------------
@@ -874,8 +889,8 @@ export function updateVirtual(element, force) {
 // Swiper on it. Ordering is the caller's problem to the extent that both must be initialized; the
 // component only calls this once both have reported ready.
 export function setThumbs(element, thumbsElement) {
-    const swiper = element?.swiper;
-    const thumbs = thumbsElement?.swiper;
+    const swiper = liveSwiper(element);
+    const thumbs = liveSwiper(thumbsElement);
     if (!swiper || !thumbs || !swiper.thumbs) {
         return;
     }
@@ -886,18 +901,18 @@ export function setThumbs(element, thumbsElement) {
 }
 
 export function setController(element, controlledElement) {
-    const swiper = element?.swiper;
+    const swiper = liveSwiper(element);
     if (!swiper || !swiper.controller) {
         return;
     }
 
-    swiper.controller.control = controlledElement?.swiper ?? undefined;
+    swiper.controller.control = liveSwiper(controlledElement) ?? undefined;
 }
 
 // --- teardown -----------------------------------------------------------------------------------------
 
 export function destroy(element) {
-    const swiper = element?.swiper;
+    const swiper = liveSwiper(element);
     const state = element?.__blazorSwiper;
 
     if (state) {

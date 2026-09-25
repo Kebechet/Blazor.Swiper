@@ -169,6 +169,13 @@ vanishes.
 the very tap that scheduled it, and `await customElements.whenDefined(...)` widens the window
 further. Check `element` and `element.isConnected` on both sides of that await.
 
+**A truthy `element.swiper` can be a destroyed instance.** `<swiper-container>` destroys its Swiper
+when it leaves the DOM, and Swiper's destroy strips every own property (`params` included) but clears
+`.swiper` only on the shadow `.swiper` div it was built on - the host keeps the gutted instance. A call
+arriving in that window (a pending `slideTo` from a pager that just collapsed) threw `Cannot read
+properties of undefined (reading 'cssMode')`. Read the instance through `liveSwiper(element)`, never
+`element.swiper` directly; `swiper-interop.destroyed.test.mjs` pins it.
+
 **A new `wwwroot` module must be a sibling.** `swiper-interop.js` imports `./swiper-policy.js`, which
 only resolves under `_content/Kebechet.Blazor.Swiper/` because both ship from the same folder.
 `PackagingTests` pins that, and the relative-import check will catch a module that never shipped.
