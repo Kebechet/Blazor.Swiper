@@ -251,6 +251,108 @@ public sealed class SwiperDestroyedTests(DemoFixture fixture)
         fixture.AssertNoJsErrors();
     }
 
+    [Fact]
+    public async Task IntendedIndexGuard_InstanceReplaced_LeavesTheDestroyedInstanceUntouched()
+    {
+        // Arrange - the guard is wired for the first instance and keeps listening on the host.
+        await fixture.NavigateToStoryAsync(AnyStory);
+
+        // Act - an animated move arms the intended index, and a resize from the replacement asks the guard
+        // to re-anchor while that move is still in flight.
+        var result = await EvaluateAsync(@"
+            const host = createHost();
+            await interop.initialize(host, {}, null, [], 0, false);
+            const instance = host.swiper;
+
+            replaceInstance(host);
+            interop.slideTo(host, 2, 300);
+            host.swiper.emit('resize');
+
+            await settle();
+            const destroyedKeys = Object.keys(instance);
+            host.remove();
+            return finish({
+                isHostStillPointingAtIt: false,
+                isDestroyed: instance.destroyed === true,
+                hasParams: instance.params !== undefined,
+                destroyedKeys
+            });");
+
+        // Assert - a destroyed instance is left with nothing but its destroyed flag, so any other key means
+        // the guard wrote onto it.
+        Assert.True(result.IsDestroyed, "Replacing the instance did not destroy the first one.");
+        Assert.Equal(new[] { "destroyed" }, result.DestroyedKeys ?? []);
+        Assert.Empty(result.Errors);
+        fixture.AssertNoJsErrors();
+    }
+
+    [Fact]
+    public async Task LiveAutoHeight_InstanceReplaced_SlideChangeLeavesTheDestroyedInstanceAlone()
+    {
+        // Arrange
+        await fixture.NavigateToStoryAsync(AnyStory);
+
+        // Act - only what the replacement's slide change raises is collected: the observers may already
+        // have reacted to the container leaving and coming back.
+        var result = await EvaluateAsync(@"
+            const host = createHost();
+            await interop.initialize(host, { autoHeight: true }, null, [], 0, false);
+            const instance = host.swiper;
+
+            replaceInstance(host);
+            await settle();
+            errors.length = 0;
+
+            host.swiper.slideTo(1, 0);
+
+            await settle();
+            host.remove();
+            return finish({
+                isHostStillPointingAtIt: false,
+                isDestroyed: instance.destroyed === true,
+                hasParams: instance.params !== undefined
+            });");
+
+        // Assert
+        Assert.True(result.IsDestroyed, "Replacing the instance did not destroy the first one.");
+        Assert.Empty(result.Errors);
+        fixture.AssertNoJsErrors();
+    }
+
+    [Fact]
+    public async Task SlideChange_InstanceReplaced_ForwardsTheEmittingInstanceIndex()
+    {
+        // Arrange - the replacement starts on slide 1, which it announces from inside its own constructor.
+        await fixture.NavigateToStoryAsync(AnyStory);
+
+        // Act
+        var result = await EvaluateAsync(@"
+            const host = createHost();
+            await interop.initialize(host, {}, dotNetRef, [], 0, false);
+            const instance = host.swiper;
+
+            dotNetCalls.length = 0;
+            host.setAttribute('initial-slide', '1');
+            replaceInstance(host);
+            await settle();
+
+            const forwardedSlideIndexes = dotNetCalls
+                .filter(call => call[0] === 'OnSlideChangeInternal')
+                .map(call => call[1] ?? null);
+            host.remove();
+            return finish({
+                isHostStillPointingAtIt: false,
+                isDestroyed: instance.destroyed === true,
+                hasParams: instance.params !== undefined,
+                forwardedSlideIndexes
+            });");
+
+        // Assert
+        Assert.Equal(new int?[] { 1 }, result.ForwardedSlideIndexes ?? []);
+        Assert.Empty(result.Errors);
+        fixture.AssertNoJsErrors();
+    }
+
     private async Task<DestroyedResult> EvaluateAsync(string scenario)
     {
         var json = await fixture.Page.EvaluateAsync<string>($"async () => {{ {Harness} {scenario} }}");
@@ -264,5 +366,7 @@ public sealed class SwiperDestroyedTests(DemoFixture fixture)
         string? Thrown,
         string[] Errors,
         int? AnchoredIndex,
-        int[]? ReportedSlideCounts);
+        int[]? ReportedSlideCounts,
+        string[]? DestroyedKeys,
+        int?[]? ForwardedSlideIndexes);
 }
