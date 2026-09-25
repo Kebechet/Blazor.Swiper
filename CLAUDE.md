@@ -169,6 +169,20 @@ vanishes.
 the very tap that scheduled it, and `await customElements.whenDefined(...)` widens the window
 further. Check `element` and `element.isConnected` on both sides of that await.
 
+**A truthy `element.swiper` can be a destroyed instance.** `<swiper-container>` destroys its Swiper
+when it leaves the DOM, and Swiper's destroy strips every own property (`params` included) but clears
+`.swiper` only on the shadow `.swiper` div it was built on - the host keeps the gutted instance. A call
+arriving in that window (a pending `slideTo` from a pager that just collapsed) threw `Cannot read
+properties of undefined (reading 'cssMode')`. Read the instance through `liveSwiper(element)`, never
+`element.swiper` directly; `swiper-interop.destroyed.test.mjs` pins it.
+
+The same holds for anything that runs later with an instance it captured - an observer, an animation
+frame, a listener, a continuation after `await`. Removing the container never runs the interop's
+`destroy()`, so those keep firing, and the host may by then hold a different instance altogether. Check
+the captured one with `isLiveSwiper(element, swiper)` (alive AND still `element.swiper`) before acting,
+read an event's instance from `emitterOf(event)`, and read any params you need before the first `await`.
+`SwiperDestroyedTests` pins these against a real `<swiper-container>`.
+
 **A new `wwwroot` module must be a sibling.** `swiper-interop.js` imports `./swiper-policy.js`, which
 only resolves under `_content/Kebechet.Blazor.Swiper/` because both ship from the same folder.
 `PackagingTests` pins that, and the relative-import check will catch a module that never shipped.
