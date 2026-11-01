@@ -20,6 +20,10 @@ import {
     shouldReanchor,
     scrollPlan,
     scrollPositionAt,
+    isSwiperCorrection,
+    isSwiperTakingOver,
+    isMoveTurnedDown,
+    snapTypeToHandBack,
     isInitPhaseEvent,
     isInitOnlyParam,
     isHighFrequencyEvent,
@@ -43,6 +47,7 @@ function hostState(element) {
         anchorObserver: null,
         slideSetObserver: null,
         slideResizeObserver: null,
+        endScrollMove: null,
         dotNetRef: null,
         appliedOptions: {},
         eventThrottleMs: 0,
@@ -307,6 +312,7 @@ function attachInternalListeners(element) {
     // programmatic move in the first place. Cleared on transitionend, since the snap outlives the pointer.
     listen(element, "sliderFirstMove", () => {
         hostState(element).isUserDriven = true;
+        abandonScrollMove(element);
     });
 
     listen(element, "transitionEnd", (event) => {
@@ -506,11 +512,18 @@ export function slideTo(element, index, speed) {
         return;
     }
 
+    // A cssMode move turns down what Swiper's slideTo would, before it ends the move in flight or takes over
+    // its intent: like Swiper's own refusal, a request turned down changes nothing.
+    const mode = navigationMode(swiper.params);
+    if (mode === "scroll" && isMoveTurnedDown(navigationLocks(swiper), swiper.activeIndex, index)) {
+        return;
+    }
+
     hostState(element).intendedIndex = index;
 
-    switch (navigationMode(swiper.params)) {
+    switch (mode) {
         case "scroll":
-            scrollToSlide(swiper, index, speed);
+            scrollToSlide(element, swiper, index, speed);
             break;
         case "loop":
             swiper.slideToLoop(index, optionalSpeed(speed));
@@ -521,38 +534,175 @@ export function slideTo(element, index, speed) {
     }
 }
 
-// cssMode moves the slider by scrolling the wrapper, and Swiper drives that with a native smooth scroll.
-// That is unusable under scroll-snap: `scroll-snap-type: mandatory` yanks every intermediate position back
-// to a snap point, and any re-render during the scroll cancels it outright, leaving the slider where it
-// started. Writing scrollLeft per frame is not cancellable, so the animation always completes.
-function scrollToSlide(swiper, index, speed) {
+// cssMode moves the slider by scrolling the wrapper, and Swiper's own slideTo animates that with the
+// browser's smooth scroll, which falls short twice (Swiper 14.4.0). The browser picks the duration, so
+// `speed` is ignored. And a layout change that resizes the slider mid-scroll - a re-render that changes a
+// slide's height is enough - has Swiper's resize handling re-seat it onto activeIndex, which in cssMode
+// still names the slide being passed: that instant scroll cancels the smooth one, and the slider stops part
+// of the way there. So an animated move writes scrollLeft itself every frame, with scroll-snap suspended -
+// under `scroll-snap-type: mandatory` each of those writes would be pulled back to a snap point. A re-seat
+// cannot cancel that, so the animation completes - unless something else takes the slider over, which the
+// move then steps aside for (below).
+//
+// There is one move per slider, and a new request ends the one in flight. Left running, the older move
+// keeps writing its own target every frame and can be the one that lands last - a request that finds the
+// slider already on its slide starts no animation at all, so nothing would even compete with it.
+//
+// Ending a move hands back the inline scroll-snap type the move found - unless that was a "none", which is
+// never the slider's resting state but another move's, or Swiper's own: it writes one for a frame around
+// every instant move of a virtual slider and for the length of a scrollbar drag. Handed back, it would leave
+// snapping off for good, and the slider would rest wherever a swipe is released, between two slides.
+//
+// Writing the offset every frame also overwrites whatever else moves the slider meanwhile, so the move
+// steps aside for it (abandonScrollMove): Swiper navigating - every route that goes through its slideTo,
+// which leaves out a scrollbar drag and a controlled slider following its controller - an anchor and a drag.
+function scrollToSlide(element, swiper, index, speed) {
+    const state = hostState(element);
     const wrapper = swiper.wrapperEl;
+
+    // Both offsets are read before the move in flight is ended. Ending it hands scroll-snap back, and a
+    // layout read after that re-snaps the wrapper on the spot - so this move would start from the nearest
+    // slide rather than from where the slider is, a jump that can point away from the new target.
     const start = wrapper.scrollLeft;
-    const plan = scrollPlan(start, swiper.slides[index]?.offsetLeft ?? 0, speed, swiper.params.speed);
+    const plan = scrollPlan(start, slideOffset(swiper, index), speed, swiper.params.speed);
+    state.endScrollMove?.();
+    hookSwiperNavigation(element, swiper);
 
+    // cssMode raises no transitionend, so nothing else ever disarms the intent slideTo() just set. A move
+    // with nothing to animate is over already.
     if (plan.kind === "none") {
+        state.intendedIndex = null;
         return;
     }
 
+    // An instant move goes through Swiper rather than writing the offset. Between a layout change and Swiper
+    // handling it, Swiper leaves every scroll to its resize handling, which then re-seats the slider onto the
+    // slide it holds - and only its own slideTo updates that in the meantime
+    // (https://github.com/nolimits4web/swiper/pull/8250).
     if (plan.kind === "instant") {
-        wrapper.scrollLeft = plan.target;
+        swiper.slideTo(index, 0);
+        state.intendedIndex = null;
         return;
     }
 
-    const previousSnapType = wrapper.style.scrollSnapType;
+    const restingSnapType = snapTypeToHandBack(wrapper.style.scrollSnapType);
     wrapper.style.scrollSnapType = "none";
 
-    const startTime = performance.now();
-    const step = (now) => {
-        const elapsed = now - startTime;
-        wrapper.scrollLeft = scrollPositionAt(start, plan.distance, elapsed, plan.duration);
-        if (elapsed < plan.duration) {
-            requestAnimationFrame(step);
-        } else {
-            wrapper.style.scrollSnapType = previousSnapType;
+    let frameRequest = 0;
+    let isClockArmed = false;
+    let startTime = null;
+
+    // Deliberately leaves the intent alone: this also runs when a newer slideTo replaces the move, and by
+    // then the intent is that request's - which may well name the same slide.
+    const end = () => {
+        cancelAnimationFrame(frameRequest);
+        if (state.endScrollMove === end) {
+            state.endScrollMove = null;
+        }
+        // Inside Swiper's own window around an instant move of a virtual slider, its next frame hands
+        // snapping back once that move's slides are rendered. Snapping now would land the wrapper on one
+        // rendered already.
+        if (!swiper._immediateVirtual) {
+            wrapper.style.scrollSnapType = restingSnapType;
         }
     };
-    requestAnimationFrame(step);
+
+    const step = (now) => {
+        if (!isLiveSwiper(element, swiper)) {
+            end();
+            return;
+        }
+
+        // The clock starts on the second frame rather than at the request. A host usually asks for the move
+        // from the same event that re-renders its slides, so the main thread is gone for a while right after
+        // the call and the first frame then has that render to lay out and paint. A clock already running
+        // across either would find most of the duration spent and jump instead of animating.
+        if (!isClockArmed) {
+            isClockArmed = true;
+            frameRequest = requestAnimationFrame(step);
+            return;
+        }
+
+        // The target is measured every frame rather than once at the request: a resize part-way moves the
+        // slides, and the offset taken before it then belongs to a different slide, or to none.
+        startTime ??= now;
+        const elapsed = now - startTime;
+        const distance = slideOffset(swiper, index) - start;
+        wrapper.scrollLeft = scrollPositionAt(start, distance, elapsed, plan.duration);
+        if (elapsed < plan.duration) {
+            frameRequest = requestAnimationFrame(step);
+            return;
+        }
+
+        state.intendedIndex = null;
+        end();
+    };
+
+    state.endScrollMove = end;
+    frameRequest = requestAnimationFrame(step);
+}
+
+const navigationHooks = new WeakSet();
+
+// Swiper's arrows, pagination and keyboard never pass through this module, and none of them announces a move
+// before making it. What they do share - with slideNext, slidePrev and every other way Swiper navigates - is
+// that they end in the instance's own slideTo, so that is where the wrapper hears that the slider has been
+// sent somewhere else (abandonScrollMove). The method is shadowed once per instance, by its first cssMode move.
+//
+// The wheel comes the same way and needs no listener here: in cssMode Swiper puts its own on the wrapper,
+// cancels the native scroll and steps a slide along whichever axis the wheel turned.
+//
+// Swiper moves first and the move is abandoned after, so Swiper reads the slider's position while
+// scroll-snap is still suspended - the other way round, the restored snapping pulls the slider onto the
+// nearest slide before Swiper has looked at it. A call Swiper turns down leaves the move running, while one
+// that finds the slider already where it asks is still navigation (isSwiperTakingOver).
+function hookSwiperNavigation(element, swiper) {
+    if (navigationHooks.has(swiper)) {
+        return;
+    }
+    navigationHooks.add(swiper);
+
+    const swiperSlideTo = swiper.slideTo;
+    swiper.slideTo = function (slideIndex, slideSpeed, runCallbacks, isInternal, ...rest) {
+        const hasMoved = swiperSlideTo.call(this, slideIndex, slideSpeed, runCallbacks, isInternal, ...rest);
+        const isCorrection = isSwiperCorrection(slideSpeed, runCallbacks, isInternal);
+        if (!isCorrection && isSwiperTakingOver(hasMoved, isNavigationLocked(this))) {
+            abandonScrollMove(element);
+        }
+        return hasMoved;
+    };
+}
+
+// Everything that can make Swiper's slideTo turn a call down - the early returns before it moves anything.
+function navigationLocks(swiper) {
+    return {
+        enabled: swiper.enabled,
+        allowSlideNext: swiper.allowSlideNext,
+        allowSlidePrev: swiper.allowSlidePrev,
+        isTransitionLocked: !!(swiper.animating && swiper.params.preventInteractionOnTransition)
+    };
+}
+
+function isNavigationLocked(swiper) {
+    const locks = navigationLocks(swiper);
+    return !locks.enabled || !locks.allowSlideNext || !locks.allowSlidePrev || locks.isTransitionLocked;
+}
+
+function slideOffset(swiper, index) {
+    return swiper.slides[index]?.offsetLeft ?? 0;
+}
+
+// Ends the cssMode move in flight because something other than a newer slideTo is taking the slider over,
+// and stands its intent down with it: the slider is no longer heading for that slide, so a later resize
+// must not put it there.
+function abandonScrollMove(element) {
+    const state = element?.__blazorSwiper;
+    if (!state?.endScrollMove) {
+        return;
+    }
+
+    state.endScrollMove();
+    state.intendedIndex = null;
 }
 
 export function slideNext(element, speed) {
@@ -592,6 +742,11 @@ function attachIntendedIndexGuard(element, swiper) {
 
         requestAnimationFrame(() => {
             if (!isLiveSwiper(element, swiper)) {
+                return;
+            }
+            // A cssMode move still in flight follows its slide through the resize by itself, and writes its
+            // own offset on the next frame anyway - anchoring here would only flash the target for one.
+            if (state.endScrollMove) {
                 return;
             }
             if (shouldReanchor(swiper.realIndex, state.intendedIndex, state.isUserDriven)) {
@@ -718,6 +873,7 @@ export function armAnchor(element, index) {
             if (!isLiveSwiper(element, anchorSwiper)) {
                 return;
             }
+            abandonScrollMove(element);
             applyAnchor(anchorSwiper, anchorIndex);
         });
     }
@@ -732,6 +888,7 @@ export function updateAndAnchor(element, index) {
     if (!swiper) {
         return;
     }
+    abandonScrollMove(element);
     applyAnchor(swiper, index);
 }
 
@@ -851,7 +1008,11 @@ export function detachEvents(element) {
 }
 
 export function attachEvents(element) {
-    liveSwiper(element)?.attachEvents();
+    const swiper = liveSwiper(element);
+    // Swiper binds a new set of listeners on every attach, so one made while they are attached would leave the
+    // old set behind for good.
+    swiper?.detachEvents();
+    swiper?.attachEvents();
 }
 
 // --- module controllers -------------------------------------------------------------------------------
@@ -972,6 +1133,7 @@ export function destroy(element) {
         state.anchorObserver?.disconnect();
         state.slideSetObserver?.disconnect();
         state.slideResizeObserver?.disconnect();
+        state.endScrollMove?.();
 
         for (const { domEvent, handler } of state.listeners) {
             element.removeEventListener(domEvent, handler);

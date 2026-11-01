@@ -12,6 +12,10 @@ import {
     shouldReanchor,
     scrollPlan,
     scrollPositionAt,
+    isSwiperCorrection,
+    isSwiperTakingOver,
+    isMoveTurnedDown,
+    snapTypeToHandBack,
     isInitPhaseEvent,
     isHighFrequencyEvent,
     shouldSendThrottledEvent,
@@ -228,6 +232,89 @@ test("ScrollPositionAt_Midway_IsAlreadyMostOfTheWayBecauseTheEaseIsFrontLoaded",
     assert.equal(scrollPositionAt(0, 100, 150, 300), 87.5);
 });
 
+test("IsSwiperCorrection_InstantInternalAndSilent_IsSwiperReseatingItself", () => {
+    // The call Swiper makes after a resize or an update: slideTo(activeIndex, 0, false, true).
+    assert.equal(isSwiperCorrection(0, false, true), true);
+});
+
+test("IsSwiperCorrection_InternalFlagLeftUnset_IsNavigation", () => {
+    // Arrows, bullets and keys never set the flag - not even for an instant move.
+    assert.equal(isSwiperCorrection(0, undefined, undefined), false);
+    assert.equal(isSwiperCorrection(0, false, false), false);
+    assert.equal(isSwiperCorrection(300, undefined, undefined), false);
+    assert.equal(isSwiperCorrection(undefined, undefined, undefined), false);
+});
+
+test("IsSwiperCorrection_InternalButAnimated_IsNavigation", () => {
+    // Autoplay flags its moves internal too, and those do send the slider somewhere.
+    assert.equal(isSwiperCorrection(300, true, true), false);
+    assert.equal(isSwiperCorrection(undefined, true, true), false);
+});
+
+test("IsSwiperCorrection_AutoplayAtSpeedZero_IsNavigation", () => {
+    // At Speed = 0 an autoplay step is instant and internal just like a re-seat, but it runs its callbacks,
+    // and every re-seat in the bundle passes runCallbacks = false.
+    assert.equal(isSwiperCorrection(0, true, true), false);
+});
+
+test("IsSwiperTakingOver_SwiperMovedTheSlider_IsTakingOver", () => {
+    assert.equal(isSwiperTakingOver(true, false), true);
+    // A lock on one direction does not stop a move the other way.
+    assert.equal(isSwiperTakingOver(true, true), true);
+});
+
+test("IsSwiperTakingOver_NothingToMoveAndNothingLocked_IsTakingOver", () => {
+    // Without a lock Swiper cannot have turned the call down, so its false means the slider already rests
+    // where the call asks - a reset, or the bullet of a slide the slider has not left yet.
+    assert.equal(isSwiperTakingOver(false, false), true);
+});
+
+test("IsSwiperTakingOver_NothingMovedWhileLocked_IsNotTakingOver", () => {
+    // Swiper may have turned the call down, and a call it turns down sends the slider nowhere.
+    assert.equal(isSwiperTakingOver(false, true), false);
+});
+
+const unlocked = { enabled: true, allowSlideNext: true, allowSlidePrev: true, isTransitionLocked: false };
+
+test("IsMoveTurnedDown_NothingLocked_GoesAhead", () => {
+    assert.equal(isMoveTurnedDown(unlocked, 1, 3), false);
+    assert.equal(isMoveTurnedDown(unlocked, 3, 1), false);
+});
+
+test("IsMoveTurnedDown_LockedInThatDirection_IsTurnedDown", () => {
+    assert.equal(isMoveTurnedDown({ ...unlocked, allowSlideNext: false }, 1, 3), true);
+    assert.equal(isMoveTurnedDown({ ...unlocked, allowSlidePrev: false }, 3, 1), true);
+    // Slide 0 is falsy and still a slide to step back to.
+    assert.equal(isMoveTurnedDown({ ...unlocked, allowSlidePrev: false }, 1, 0), true);
+});
+
+test("IsMoveTurnedDown_LockedTheOtherWay_GoesAhead", () => {
+    assert.equal(isMoveTurnedDown({ ...unlocked, allowSlidePrev: false }, 1, 3), false);
+    assert.equal(isMoveTurnedDown({ ...unlocked, allowSlideNext: false }, 3, 1), false);
+});
+
+test("IsMoveTurnedDown_OntoTheSlideItIsOn_GoesAheadDespiteALock", () => {
+    // Swiper checks the direction locks only for a move to another slide.
+    assert.equal(isMoveTurnedDown({ ...unlocked, allowSlideNext: false, allowSlidePrev: false }, 2, 2), false);
+});
+
+test("IsMoveTurnedDown_DisabledOrMidTransition_IsTurnedDownEitherWay", () => {
+    assert.equal(isMoveTurnedDown({ ...unlocked, enabled: false }, 1, 3), true);
+    assert.equal(isMoveTurnedDown({ ...unlocked, enabled: false }, 2, 2), true);
+    assert.equal(isMoveTurnedDown({ ...unlocked, isTransitionLocked: true }, 3, 1), true);
+});
+
+test("SnapTypeToHandBack_SwipersOwnNone_IsTheStylesheet", () => {
+    // Swiper writes "none" inline itself around virtual instant moves and scrollbar drags.
+    assert.equal(snapTypeToHandBack("none"), "");
+});
+
+test("SnapTypeToHandBack_StylesheetOrHostValue_IsKept", () => {
+    assert.equal(snapTypeToHandBack(""), "");
+    assert.equal(snapTypeToHandBack("x proximity"), "x proximity");
+    assert.equal(snapTypeToHandBack("x mandatory"), "x mandatory");
+});
+
 test("ChangedOptions_MemberThatMoved_IsTheOnlyOneReported", () => {
     // Arrange
     const previous = { slidesPerView: 1, spaceBetween: 16, observer: false };
@@ -275,6 +362,7 @@ test("IsInitOnlyParam_ParametersSwiperOnlyReadsWhileInitializing_AreRecognised",
     assert.equal(isInitOnlyParam("cssMode"), true);
     assert.equal(isInitOnlyParam("initialSlide"), true);
     assert.equal(isInitOnlyParam("keyboard"), true);
+    assert.equal(isInitOnlyParam("lazyPreload"), true);
 });
 
 test("IsInitOnlyParam_ParametersSwiperReAppliesOnUpdate_AreNot", () => {

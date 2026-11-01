@@ -69,6 +69,9 @@ This matters more than it sounds, and it is why there are three suites rather th
 - **Only a browser sees the rest**: the `<swiper-container>` custom element upgrading, the reveal
   handshake, cssMode scrolling under scroll-snap, the autoHeight `ResizeObserver`, `ArmAnchor`'s
   same-frame guarantee, and any real swipe.
+- **Only a real phone sees a finger, a rotation and iOS WebKit.** Desktop Chrome passed a resize fix
+  that the iPhone failed, because WebKit delivers the clamped scroll before the `ResizeObserver`.
+  The `phone-e2e` skill (`.claude/skills/phone-e2e/`) runs the e2e suite on a phone.
 - **The console is part of the assertion.** The slider can land on the right slide while the interop
   threw on the way there, and the index alone still reads correctly. Every e2e scenario calls
   `AssertNoJsErrors`.
@@ -125,10 +128,11 @@ reads the mere presence of a module's options as "module wanted", which is what 
 means.
 
 **`injectStyles` lands in `adoptedStyleSheets`, not in a `<style>`.** The element takes the
-constructable-stylesheet path wherever `CSSStyleSheet` exists, which is everywhere that matters. It
-is also declared as a class field on the element, which shadows the prototype accessor the other
-parameters use - so assigning it writes the field the renderer actually reads, and never routes
-through the element's post-init update path. It is init-only either way.
+constructable-stylesheet path wherever `CSSStyleSheet` exists, which is everywhere that matters. Up
+to Swiper 14.2 it was a class field on the element, shadowing the prototype accessor the other
+parameters use; since 14.3.0 it is one of those accessors, and the renderer reads it through the
+getter. Either way the styles are rendered once, at init, so a later assignment changes nothing - it
+is init-only.
 
 **`realIndex`, never `activeIndex`.** In loop mode Swiper duplicates slides, so `activeIndex` counts
 positions the host's collection does not have. Everything crossing the interop boundary is the
@@ -141,8 +145,9 @@ exists to correct and lets the re-anchor stand. `shouldDisarmIntent` owns that r
 
 **`sliderFirstMove`, not `touchstart`.** touchstart also fires for a plain tap on a button inside a
 slide - usually the very thing that triggered the programmatic move. `sliderFirstMove` is the only
-signal separating a swipe from a code-driven move, because loop mode re-announces the slide it left
-after a programmatic move and that echo is identical by index.
+signal separating a swipe from a code-driven move, which an index alone cannot tell apart - up to
+Swiper 14.1, loop mode even re-announced the slide it left after a programmatic move, until 14.2.0
+stopped `loopFix`'s teleports raising index events.
 
 **Slide 0 is falsy.** The intent guards test `!== null` explicitly (`isIntentArmed`). A truthiness
 check silently refuses to defend the first slide, which is exactly where a reset lands.
@@ -164,6 +169,21 @@ wrong slide. Blazor Server has no in-process option and keeps the async path.
 transformed track, and setting it forces computed `overflow-x` from visible to auto - turning the
 wrapper into a one-slide-wide clip box that travels with the transform, so every slide but the first
 vanishes.
+
+**A resize used to move a cssMode slider onto another slide - in Swiper itself, fixed in 14.4.0.** A
+layout change moves the wrapper's scroll position before Swiper's resize handling has measured that
+layout: slides sized by CSS and centered slides are re-snapped, and a slider that grows past the end of its
+track is clamped. Up to 14.3.0 Swiper read that scroll against its old slide grid and re-seated onto the
+slide it misread (https://github.com/nolimits4web/swiper/issues/8246,
+https://github.com/nolimits4web/swiper/issues/8254). Since
+https://github.com/nolimits4web/swiper/pull/8250 it leaves every scroll in that window to its resize
+handling, which re-seats the slider onto the slide it holds - the wrapper's own scroll writes included.
+Swiper handles the resize a frame after its ResizeObserver fires, and every frame of a width transition is
+such a window. So an instant cssMode `SlideTo` goes through Swiper's `slideTo`, which names its target in
+that window, rather than writing the offset
+(`SlideTo_InstantMoveInTheFrameAfterAResize_EndsOnTheRequestedSlide`); an animated one writes its offset
+every frame and lands after the window anyway (`Resize_DuringAMove_EndsOnTheRequestedSlide`). The other
+`Resize_*` scenarios in `SwiperCssModeMoveTests` are the proof that a vendored bundle carries the fix.
 
 **The element can be gone before `initialize` runs.** A conditionally rendered pager can collapse on
 the very tap that scheduled it, and `await customElements.whenDefined(...)` widens the window

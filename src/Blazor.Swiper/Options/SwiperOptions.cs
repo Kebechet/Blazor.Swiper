@@ -374,6 +374,14 @@ public sealed record SwiperOptions
     /// <summary>Class of the lazy-loading placeholder.</summary>
     public string? LazyPreloaderClass { get; set; }
 
+    /// <summary>
+    /// Let Swiper handle <c>loading="lazy"</c> images: remove their preloader on load, relayout
+    /// for them, and preload the neighbours <see cref="LazyPreloadPrevNext"/> asks for. Turn it off
+    /// when the images' loading is handled elsewhere. Swiper reads it only while it initializes, so changing
+    /// it on a running slider has no effect. Null = Swiper's default (true).
+    /// </summary>
+    public bool? LazyPreload { get; set; }
+
     /// <summary>How many slides either side of the active one have their lazy images preloaded. Null = Swiper's default (0).</summary>
     public int? LazyPreloadPrevNext { get; set; }
 

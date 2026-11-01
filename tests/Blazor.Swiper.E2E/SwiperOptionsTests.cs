@@ -37,7 +37,7 @@ public sealed class SwiperOptionsTests(DemoFixture fixture)
         var canvas = await fixture.NavigateToStoryAsync("components-swiper--slides-per-group", "group-state");
 
         // Act - the navigation arrows live in the element's shadow DOM, which Playwright pierces.
-        await canvas.GetByTestId("group-swiper").Locator("css=.swiper-button-next").ClickAsync();
+        await SwipeHelper.TapAsync(fixture.Page, canvas.GetByTestId("group-swiper").Locator("css=.swiper-button-next"));
 
         // Assert - a group of three means one press travels three slides, not one.
         var state = await StoryState.WaitForAsync(
@@ -118,6 +118,8 @@ public sealed class SwiperOptionsTests(DemoFixture fixture)
     [Fact]
     public async Task Breakpoints_ViewportResized_SwapsTheParametersInForce()
     {
+        Assert.SkipWhen(DeviceInput.IsActive, "A phone's page cannot be resized for one test: Safari's Web Inspector cannot resize it, and Android's Chrome keeps the size for every later test.");
+
         // Arrange
         var canvas = await fixture.NavigateToStoryAsync("components-swiper--breakpoints", "breakpoint-state");
 
@@ -371,6 +373,8 @@ public sealed class SwiperOptionsTests(DemoFixture fixture)
     [Fact]
     public async Task Mousewheel_OrdinaryVerticalWheel_MovesTheSlider()
     {
+        Assert.SkipWhen(DeviceInput.IsIPhone, "An iPhone has no mouse wheel to turn.");
+
         // Arrange
         var canvas = await fixture.NavigateToStoryAsync("components-swiper-modules--mousewheel", "mousewheel-state");
         var slider = canvas.GetByTestId("mousewheel-swiper");
@@ -397,6 +401,8 @@ public sealed class SwiperOptionsTests(DemoFixture fixture)
     [Fact]
     public async Task Mousewheel_ForceToAxis_IgnoresAVerticalWheelOnAHorizontalSlider()
     {
+        Assert.SkipWhen(DeviceInput.IsIPhone, "An iPhone has no mouse wheel to turn.");
+
         // Arrange
         var canvas = await fixture.NavigateToStoryAsync("components-swiper-modules--mousewheel", "mousewheel-axis-state");
         var slider = canvas.GetByTestId("mousewheel-axis-swiper");
@@ -438,6 +444,59 @@ public sealed class SwiperOptionsTests(DemoFixture fixture)
             state => StoryState.Int(state, "activeIndex") == 2,
             "the cssMode slider to reach slide 2");
 
+        fixture.AssertNoJsErrors();
+    }
+
+    [Fact]
+    public async Task AttachEvents_WhileTheyAreAttached_KeepsOneSetOfListeners()
+    {
+        // Arrange - Swiper binds a new set of listeners on every attach, and a slider sized by its slides relays
+        // out on every image that loads
+        await fixture.NavigateToStoryAsync("components-swiper--auto-slides-per-view");
+
+        // Act
+        var updates = await fixture.Page.EvaluateAsync<int[]>(
+            """
+            async () => {
+                const interop = await import(new URL('./_content/Kebechet.Blazor.Swiper/swiper-interop.js', document.baseURI).href);
+                const stage = document.createElement('div');
+                stage.style.width = '420px';
+                document.body.appendChild(stage);
+                const el = document.createElement('swiper-container');
+                el.setAttribute('init', 'false');
+                const slide = document.createElement('swiper-slide');
+                slide.style.width = '150px';
+                const image = document.createElement('img');
+                image.loading = 'lazy';
+                slide.appendChild(image);
+                el.appendChild(slide);
+                stage.appendChild(el);
+                await interop.initialize(el, { slidesPerView: 'auto', lazyPreload: true }, null, [], 0, false);
+                let count = 0;
+                const swiperUpdate = el.swiper.update;
+                el.swiper.update = function (...args) {
+                    count++;
+                    return swiperUpdate.apply(this, args);
+                };
+                const updates = [];
+                const load = () => {
+                    count = 0;
+                    image.dispatchEvent(new Event('load'));
+                    updates.push(count);
+                };
+                interop.attachEvents(el);
+                load();
+                interop.detachEvents(el);
+                load();
+                interop.attachEvents(el);
+                load();
+                stage.remove();
+                return updates;
+            }
+            """);
+
+        // Assert - one relayout per load while attached, and none once detached
+        Assert.Equal([1, 0, 1], updates);
         fixture.AssertNoJsErrors();
     }
 }

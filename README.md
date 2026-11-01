@@ -163,6 +163,7 @@ It's a `record`, so a change is a `with` expression, and changing it pushes the 
 | `InjectStyles` | `string[]?` | `null` - see [below](#reaching-the-shadow-dom) |
 | `InjectStylesUrls` | `string[]?` | `null` |
 | `ContainerModifierClass`, `SlideClass`, `SlideActiveClass`, `SlideVisibleClass`, `SlideFullyVisibleClass`, `SlideBlankClass`, `SlideNextClass`, `SlidePrevClass`, `WrapperClass`, `LazyPreloaderClass` | `string?` | Swiper's own class names |
+| `LazyPreload` | `bool?` | `true` - turn off when something else handles `loading="lazy"` images |
 | `LazyPreloadPrevNext` | `int?` | `0` |
 
 ### Modules
@@ -344,7 +345,7 @@ The first event of a burst is always delivered, so a throttled `OnProgress` stil
 
 ### Prefer `OnUserSlideChange` when you react by changing state
 
-`OnSlideChange` reports every change - including the one your own `SlideTo` call just caused, and the echo `Loop` mode emits for the slide it left once a programmatic move finishes. A host that reacts to a change by updating its own state will feed its own move straight back into itself, and by index alone the two are indistinguishable.
+`OnSlideChange` reports every change - including the one your own `SlideTo` call just caused. A host that reacts to a change by updating its own state will feed its own move straight back into itself, and by index alone the two are indistinguishable.
 
 `OnUserSlideChange` reports only the changes the user dragged. A plain tap raises neither, so a button inside a slide is never mistaken for a swipe. The slider keeps moving after the pointer is released, so treat the interaction as finished on `OnTransitionEnd` rather than on release.
 

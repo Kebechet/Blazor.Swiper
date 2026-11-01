@@ -109,6 +109,7 @@ const INIT_ONLY_PARAMS = new Set([
     "resizeObserver",
     "updateOnWindowResize",
     "passiveListeners",
+    "lazyPreload",
     "touchEventsTarget",
     "simulateTouch",
     "nested",
@@ -269,6 +270,68 @@ export function scrollPositionAt(start, distance, elapsed, duration) {
     const eased = 1 - Math.pow(1 - progress, 3);
 
     return start + distance * eased;
+}
+
+/**
+ * Whether a call to Swiper's `slideTo` is Swiper settling itself rather than the slider being sent
+ * somewhere.
+ *
+ * After a resize or an update Swiper re-seats itself on the slide it already holds, and it makes
+ * that call the same way every time: instantly, without callbacks and flagged internal -
+ * `slideTo(index, 0, false, true)`. Those must not end a cssMode move in flight - the slider has not
+ * been given a new destination, and the move follows its slide through the resize by itself.
+ * Everything else is navigation, whoever asked: an arrow, a bullet and a key leave the flag unset,
+ * and autoplay sets it but runs its callbacks, which is what still tells its steps apart at
+ * Speed = 0, where they are as instant as a re-seat.
+ */
+export function isSwiperCorrection(speed, runCallbacks, isInternal) {
+    return speed === 0 && runCallbacks === false && isInternal === true;
+}
+
+/**
+ * Whether a navigation call Swiper answered sent the slider somewhere, rather than being turned down.
+ *
+ * Swiper's `slideTo` returns false for both. It turns a call down when it is disabled, locked in that
+ * direction, or mid-transition with `preventInteractionOnTransition` - and it also returns false when
+ * the slider already rests where the call asks it to be. The second is still navigation: a reset, or
+ * the bullet of a slide the slider has not left yet, says "stay here", and a move in flight must not
+ * carry the slider off regardless. Only a lock can turn a call down, so without one a false is the
+ * second.
+ */
+export function isSwiperTakingOver(hasMoved, isNavigationLocked) {
+    return hasMoved || !isNavigationLocked;
+}
+
+/**
+ * Whether Swiper's `slideTo` would turn a move from `activeIndex` to `index` down.
+ *
+ * The wrapper animates a cssMode move itself rather than through that `slideTo`, so it has to turn down
+ * what Swiper would: any move while the slider is disabled or mid-transition with
+ * `preventInteractionOnTransition`, and a move to another slide in a direction `allowSlideNext` or
+ * `allowSlidePrev` locks.
+ */
+export function isMoveTurnedDown({ enabled, allowSlideNext, allowSlidePrev, isTransitionLocked }, activeIndex, index) {
+    if (!enabled || isTransitionLocked) {
+        return true;
+    }
+
+    if (index > activeIndex) {
+        return !allowSlideNext;
+    }
+
+    return index < activeIndex && !allowSlidePrev;
+}
+
+/**
+ * The inline `scroll-snap-type` to hand back when a cssMode move ends, given the one it found.
+ *
+ * Swiper writes "none" there itself, for a frame around every instant move of a virtual slider and for
+ * the length of a scrollbar drag, so a "none" found is never the slider's resting state and handing it
+ * back would leave snapping off for good. Anything else - the stylesheet's empty value, or a snap type
+ * the host set on the wrapper - is.
+ */
+export function snapTypeToHandBack(found) {
+    return found === "none" ? "" : found;
 }
 
 // --- events -------------------------------------------------------------------------------------
