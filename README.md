@@ -268,6 +268,13 @@ Swiper Element turns its `MutationObserver` on; this wrapper turns it off. With 
 
 Programmatic moves are animated by the wrapper rather than by Swiper, because Swiper drives them with a native smooth scroll that `scroll-snap-type: mandatory` cancels outright.
 
+The wrapper also switches the `Mousewheel` module on for a `CssMode` slider, unless you set `Mousewheel` yourself. Swiper 14 leaves the wheel of a cssMode slider to the browser only while that module is on. With it off, Swiper cancels every wheel event over the slider and steps one page instead, so neither the slider nor a native scroller inside it can be scrolled with a wheel or a trackpad. With it on, Swiper adds no wheel listener at all in cssMode, so the module's other members have no effect there. Whatever you set wins, including `Mousewheel = false`, which keeps Swiper's own cancel-and-step behaviour. Only a `CssMode` set directly on `SwiperOptions` is defaulted. A cssMode that comes from a breakpoint (`Breakpoints["..."].CssMode`) or from a `css-mode` attribute on the component is not, so set `Mousewheel` explicitly on those sliders:
+
+```csharp
+new SwiperOptions { CssMode = true }                        // wheel and trackpad scroll like a native scroller
+new SwiperOptions { CssMode = true, Mousewheel = false }    // Swiper's own: every wheel event steps one page
+```
+
 ### `ResizeObserver` and `A11y.ScrollOnFocus` can undo a move you just made
 
 Both of these Swiper behaviours end by re-anchoring onto the index Swiper is currently holding, and both are deferred by a frame. When your code moves the slider during the same interaction that triggered one of them, the correction is scheduled with the *pre-move* index, lands after your move, and silently undoes it.
