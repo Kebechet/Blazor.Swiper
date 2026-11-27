@@ -57,20 +57,34 @@ function cleanOptionValue(value) {
 }
 
 /**
- * The wrapper's own default, applied only where it deliberately differs from Swiper's.
+ * The wrapper's own defaults, applied only where they deliberately differ from Swiper's.
  *
  * Swiper Element spreads `{observer: true}` in ahead of the caller's parameters, so leaving the
  * member unset does not mean "off" the way it does everywhere else - it means Swiper's own
  * MutationObserver runs. With a framework re-rendering slide content, and especially with
  * autoHeight, whose height writes are themselves mutations, that drives an update/height feedback
  * loop. Only an explicit `Observer = true` turns it on.
+ *
+ * A cssMode slider gets the mousewheel module switched on. Swiper 14 leaves the wheel of a cssMode
+ * slider to the browser only while that module is ON: switched off, its init hook puts a listener on
+ * the wrapper that cancels every wheel event and steps one page instead, so neither the slider nor a
+ * native scroller inside it can be scrolled with a wheel or a trackpad. A module options object
+ * without `enabled` means enabled. Only a caller who said nothing is defaulted: by now an explicit
+ * `Mousewheel = false` is the literal `false` (see cleanOptionValue), which is not undefined and so
+ * stands.
  */
 function withWrapperDefaults(options) {
-    if (options.observer === undefined) {
-        return { ...options, observer: false };
+    const withDefaults = { ...options };
+
+    if (withDefaults.observer === undefined) {
+        withDefaults.observer = false;
     }
 
-    return options;
+    if (withDefaults.cssMode === true && withDefaults.mousewheel === undefined) {
+        withDefaults.mousewheel = {};
+    }
+
+    return withDefaults;
 }
 
 /**

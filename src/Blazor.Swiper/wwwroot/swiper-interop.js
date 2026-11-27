@@ -48,6 +48,7 @@ function hostState(element) {
         slideSetObserver: null,
         slideResizeObserver: null,
         endScrollMove: null,
+        releaseWheelHook: null,
         dotNetRef: null,
         appliedOptions: {},
         eventThrottleMs: 0,
@@ -649,8 +650,12 @@ const navigationHooks = new WeakSet();
 // that they end in the instance's own slideTo, so that is where the wrapper hears that the slider has been
 // sent somewhere else (abandonScrollMove). The method is shadowed once per instance, by its first cssMode move.
 //
-// The wheel comes the same way and needs no listener here: in cssMode Swiper puts its own on the wrapper,
-// cancels the native scroll and steps a slide along whichever axis the wheel turned.
+// The wheel does not come that way. A cssMode slider has Swiper's mousewheel module on unless the caller
+// configured it (swiper-policy.js), and with it on Swiper leaves the wheel to the browser, so nothing
+// reaches slideTo and the slider just scrolls under the move. The wrapper hears it itself, from a listener
+// on the wrapper registered after Swiper's: with the module off Swiper's own listener cancels the wheel and
+// steps a slide along whichever axis it turned, and that step must reach slideTo before the move is
+// abandoned, for the reason given below.
 //
 // Swiper moves first and the move is abandoned after, so Swiper reads the slider's position while
 // scroll-snap is still suspended - the other way round, the restored snapping pulls the slider onto the
@@ -661,6 +666,13 @@ function hookSwiperNavigation(element, swiper) {
         return;
     }
     navigationHooks.add(swiper);
+
+    const state = hostState(element);
+    const wrapper = swiper.wrapperEl;
+    const onWheel = () => abandonScrollMove(element);
+    state.releaseWheelHook?.();
+    wrapper.addEventListener("wheel", onWheel, { passive: true });
+    state.releaseWheelHook = () => wrapper.removeEventListener("wheel", onWheel);
 
     const swiperSlideTo = swiper.slideTo;
     swiper.slideTo = function (slideIndex, slideSpeed, runCallbacks, isInternal, ...rest) {
@@ -1134,6 +1146,7 @@ export function destroy(element) {
         state.slideSetObserver?.disconnect();
         state.slideResizeObserver?.disconnect();
         state.endScrollMove?.();
+        state.releaseWheelHook?.();
 
         for (const { domEvent, handler } of state.listeners) {
             element.removeEventListener(domEvent, handler);

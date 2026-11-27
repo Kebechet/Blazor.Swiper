@@ -59,6 +59,52 @@ test("ApplicableOptions_ObserverAskedForExplicitly_IsLeftAlone", () => {
     assert.equal(applied({ observer: true }).observer, true);
 });
 
+test("ApplicableOptions_CssModeWithNoMousewheel_SwitchesTheMousewheelModuleOn", () => {
+    // Arrange - Swiper 14 cancels every wheel event of a cssMode slider while its mousewheel module is
+    // off, and steps one page instead. An options object without `enabled` is what turns the module on.
+    const options = { cssMode: true, mousewheel: null };
+
+    // Act & Assert
+    assert.deepEqual(applied(options).mousewheel, {});
+});
+
+test("ApplicableOptions_CssModeWithMousewheelUnsetEntirely_SwitchesTheMousewheelModuleOn", () => {
+    assert.deepEqual(applied({ cssMode: true }).mousewheel, {});
+});
+
+test("ApplicableOptions_CssModeWithMousewheelDisabledExplicitly_LeavesItDisabled", () => {
+    // Arrange - `Mousewheel = false` reaches the interop as { enabled: false }, and the caller asking
+    // for the module off is not the same as the caller never having said.
+    const options = { cssMode: true, mousewheel: { enabled: false } };
+
+    // Act & Assert
+    assert.equal(applied(options).mousewheel, false);
+});
+
+test("ApplicableOptions_CssModeWithMousewheelConfigured_KeepsTheCallersOwnSettings", () => {
+    // Arrange
+    const options = { cssMode: true, mousewheel: { sensitivity: 2, forceToAxis: true, invert: null } };
+
+    // Act & Assert
+    assert.deepEqual(applied(options).mousewheel, { sensitivity: 2, forceToAxis: true });
+});
+
+test("ApplicableOptions_CssModeWithMousewheelEnabledExplicitly_KeepsTheEnabledFlag", () => {
+    assert.deepEqual(applied({ cssMode: true, mousewheel: { enabled: true } }).mousewheel, { enabled: true });
+});
+
+test("ApplicableOptions_NoCssMode_LeavesTheMousewheelUntouched", () => {
+    // Without cssMode Swiper's own default stands: the module is off unless the caller asked for it.
+    assert.equal("mousewheel" in applied({ cssMode: false, mousewheel: null }), false);
+    assert.equal("mousewheel" in applied({ cssMode: null }), false);
+    assert.equal("mousewheel" in applied({ loop: true }), false);
+    assert.equal("mousewheel" in applied(null), false);
+});
+
+test("ApplicableOptions_NoCssModeWithMousewheelConfigured_KeepsTheCallersOwnSettings", () => {
+    assert.deepEqual(applied({ mousewheel: { sensitivity: 2 } }).mousewheel, { sensitivity: 2 });
+});
+
 test("ApplicableOptions_UnsetMemberOfAModulesOptions_IsDroppedToo", () => {
     // Arrange - a module's options are their own object, so an unset member arrives as
     // pagination.type = null and would blank Swiper's default just as effectively as a top-level one.

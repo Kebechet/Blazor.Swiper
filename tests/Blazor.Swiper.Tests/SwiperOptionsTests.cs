@@ -197,6 +197,51 @@ public sealed class SwiperOptionsTests
     }
 
     [Fact]
+    public void Serialize_CssModeWithMousewheelNeverSet_WritesMousewheelAsNull()
+    {
+        // Arrange - swiper-policy.js switches the mousewheel module on for a cssMode slider, but only
+        // where the caller never said anything about it. It tells "never said" from "said off" by
+        // this null, so a default object here would read as the caller's own choice.
+        var options = new SwiperOptions { CssMode = true };
+
+        // Act
+        using var json = JsonDocument.Parse(Swiper.SerializeOptions(options));
+
+        // Assert
+        json.RootElement.GetProperty("cssMode").GetBoolean().ShouldBeTrue();
+        json.RootElement.GetProperty("mousewheel").ValueKind.ShouldBe(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public void Serialize_CssModeWithMousewheelTurnedOff_SaysSoExplicitly()
+    {
+        // Arrange - the one way for a cssMode slider to keep the module off. If this stopped arriving
+        // as an object the interop could not tell it from an unset member and would switch it on.
+        var options = new SwiperOptions { CssMode = true, Mousewheel = false };
+
+        // Act
+        using var json = JsonDocument.Parse(Swiper.SerializeOptions(options));
+
+        // Assert
+        json.RootElement.GetProperty("mousewheel").GetProperty("enabled").GetBoolean().ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Serialize_CssModeWithMousewheelConfigured_KeepsTheCallersObject()
+    {
+        // Arrange
+        var options = new SwiperOptions { CssMode = true, Mousewheel = new() { Sensitivity = 2 } };
+
+        // Act
+        using var json = JsonDocument.Parse(Swiper.SerializeOptions(options));
+
+        // Assert - no `enabled`, which Swiper reads as enabled for a module object.
+        var mousewheel = json.RootElement.GetProperty("mousewheel");
+        mousewheel.GetProperty("sensitivity").GetDouble().ShouldBe(2);
+        mousewheel.GetProperty("enabled").ValueKind.ShouldBe(JsonValueKind.Null);
+    }
+
+    [Fact]
     public void Serialize_CreativeEffectTransforms_KeepTheirArrayShape()
     {
         // Arrange - Swiper reads translate as [x, y, z], where each entry is px or a percentage.

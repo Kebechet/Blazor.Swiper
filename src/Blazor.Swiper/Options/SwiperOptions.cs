@@ -140,11 +140,20 @@ public sealed record SwiperOptions
     /// Null = Swiper's default (false).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Swiper's own trade-offs apply: mouse-drag does not work (wheel, trackpad and touch do, exactly
     /// like a native scroller), <see cref="Speed"/> is ignored, transition start/end events do not
     /// fire, and it is not compatible with <see cref="Loop"/>. The wrapper animates programmatic
     /// moves itself here, because Swiper drives them with a native smooth scroll that scroll-snap
     /// cancels.
+    /// </para>
+    /// <para>
+    /// The wheel only works like a native scroller's because the wrapper switches the
+    /// <see cref="Mousewheel"/> module on for a cssMode slider unless <see cref="Mousewheel"/> is
+    /// set. With that module off, Swiper cancels every wheel event over a cssMode slider and steps
+    /// one page instead, so neither the slider nor a native scroller inside it can be scrolled with
+    /// a wheel or a trackpad. Set <c>Mousewheel = false</c> to keep that.
+    /// </para>
     /// </remarks>
     public bool? CssMode { get; set; }
 
@@ -406,7 +415,7 @@ public sealed record SwiperOptions
     /// <summary>Keyboard control. Null = off.</summary>
     public SwiperKeyboardOptions? Keyboard { get; set; }
 
-    /// <summary>Mousewheel control. Null = off.</summary>
+    /// <summary>Mousewheel control. Null = off, except on a <see cref="CssMode"/> slider, where the wrapper turns it on.</summary>
     public SwiperMousewheelOptions? Mousewheel { get; set; }
 
     /// <summary>Glide freely instead of snapping to slides. Null = off.</summary>
