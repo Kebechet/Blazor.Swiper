@@ -22,6 +22,7 @@ import {
     scrollPositionAt,
     isSwiperCorrection,
     isSwiperTakingOver,
+    isWheelIgnoredBySwiper,
     isMoveTurnedDown,
     snapTypeToHandBack,
     isInitPhaseEvent,
@@ -655,7 +656,9 @@ const navigationHooks = new WeakSet();
 // reaches slideTo and the slider just scrolls under the move. The wrapper hears it itself, from a listener
 // on the wrapper registered after Swiper's: with the module off Swiper's own listener cancels the wheel and
 // steps a slide along whichever axis it turned, and that step must reach slideTo before the move is
-// abandoned, for the reason given below.
+// abandoned, for the reason given below. A wheel Swiper ignores leaves the move running, as it leaves the
+// slider alone. The listener goes with the instance it was added for: a container leaving the DOM destroys
+// its Swiper without destroy() below ever running, and the host may come back with another one.
 //
 // Swiper moves first and the move is abandoned after, so Swiper reads the slider's position while
 // scroll-snap is still suspended - the other way round, the restored snapping pulls the slider onto the
@@ -669,10 +672,22 @@ function hookSwiperNavigation(element, swiper) {
 
     const state = hostState(element);
     const wrapper = swiper.wrapperEl;
-    const onWheel = () => abandonScrollMove(element);
-    state.releaseWheelHook?.();
+    const onWheel = (event) => {
+        if (!isWheelIgnoredBySwiper(event.target, swiper.params.mousewheel.noMousewheelClass)) {
+            abandonScrollMove(element);
+        }
+    };
     wrapper.addEventListener("wheel", onWheel, { passive: true });
-    state.releaseWheelHook = () => wrapper.removeEventListener("wheel", onWheel);
+
+    // Swiper's destroy event is how the listener leaves with a DOM-driven destroy. That handler must not take
+    // itself off the event: Swiper is walking the handler list while it runs, and a removal in the middle
+    // skips whichever handler comes next. The release is for destroy() below, which takes both off.
+    const removeWheelListener = () => wrapper.removeEventListener("wheel", onWheel);
+    swiper.on("destroy", removeWheelListener);
+    state.releaseWheelHook = () => {
+        swiper.off("destroy", removeWheelListener);
+        removeWheelListener();
+    };
 
     const swiperSlideTo = swiper.slideTo;
     swiper.slideTo = function (slideIndex, slideSpeed, runCallbacks, isInternal, ...rest) {

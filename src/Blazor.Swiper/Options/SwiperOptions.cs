@@ -154,6 +154,11 @@ public sealed record SwiperOptions
     /// one page instead, so neither the slider nor a native scroller inside it can be scrolled with
     /// a wheel or a trackpad. Set <c>Mousewheel = false</c> to keep that.
     /// </para>
+    /// <para>
+    /// Only a <see cref="CssMode"/> set directly on these options is defaulted. One that comes from a
+    /// breakpoint (<see cref="Breakpoints"/>) or from a <c>css-mode</c> attribute on the component is
+    /// not, so set <see cref="Mousewheel"/> explicitly there.
+    /// </para>
     /// </remarks>
     public bool? CssMode { get; set; }
 
@@ -416,6 +421,11 @@ public sealed record SwiperOptions
     public SwiperKeyboardOptions? Keyboard { get; set; }
 
     /// <summary>Mousewheel control. Null = off, except on a <see cref="CssMode"/> slider, where the wrapper turns it on.</summary>
+    /// <remarks>
+    /// Only a <see cref="CssMode"/> set directly on these options is defaulted. One that comes from a
+    /// breakpoint (<see cref="Breakpoints"/>) or from a <c>css-mode</c> attribute on the component is
+    /// not, so set this explicitly there.
+    /// </remarks>
     public SwiperMousewheelOptions? Mousewheel { get; set; }
 
     /// <summary>Glide freely instead of snapping to slides. Null = off.</summary>

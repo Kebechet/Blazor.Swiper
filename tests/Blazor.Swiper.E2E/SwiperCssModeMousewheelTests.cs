@@ -211,30 +211,90 @@ public sealed class SwiperCssModeMousewheelTests(DemoFixture fixture)
     }
 
     [Fact]
-    public async Task SlideTo_OnASliderInitializedAgainWithoutDestroying_LeavesOneWheelListenerNotTwo()
+    public async Task WheelListener_ContainerLeavesTheDomAndComesBack_GoesWithTheDestroyedSwiperAndIsAddedAgainForTheReplacement()
     {
-        // Arrange - the element leaves the DOM and comes back, which destroys its Swiper, and the host
-        // initializes it again without disposing first
+        // Arrange - the element leaves the DOM, which destroys its Swiper without the interop's destroy()
+        // ever running, and comes back with a new one
         await fixture.NavigateToStoryAsync(CssModeStory, CssModeState);
 
-        // Act
+        // Act - counted at every step rather than after the replacement's first move, which would
+        // remove a listener left behind by the destroyed Swiper on its own
         var result = await EvaluateAsync(WheelListenerSpy + @"
-            const slider = await standaloneSlider({ cssMode: true, mousewheel: {}, spaceBetween: 16 });
+            const options = { cssMode: true, mousewheel: {}, spaceBetween: 16 };
+            const slider = await standaloneSlider(options);
             interop.slideTo(slider.el, 2, 300);
             await wait(600);
+            const listenersWhileLive = wheelListeners.length;
             slider.el.remove();
+            const listenersAfterRemoval = wheelListeners.length;
             slider.stage.appendChild(slider.el);
-            await interop.initialize(slider.el, { cssMode: true, mousewheel: {}, spaceBetween: 16 }, null, [], 0, false);
+            await interop.initialize(slider.el, options, null, [], 0, false);
+            const listenersAfterReinitialization = wheelListeners.length;
             interop.slideTo(slider.el, 3, 300);
             await wait(600);
-            const listenersWhileLive = wheelListeners.length;
+            const listenersAfterReplacementMove = wheelListeners.length;
             interop.destroy(slider.el);
             slider.stage.remove();
-            return JSON.stringify({ listenersWhileLive, listenersAfterDestroy: wheelListeners.length });");
+            return JSON.stringify({
+                listenersWhileLive,
+                listenersAfterRemoval,
+                listenersAfterReinitialization,
+                listenersAfterReplacementMove,
+                listenersAfterDestroy: wheelListeners.length
+            });");
 
         // Assert
         Assert.Equal(1, result.ListenersWhileLive);
+        Assert.Equal(0, result.ListenersAfterRemoval);
+        Assert.Equal(0, result.ListenersAfterReinitialization);
+        Assert.Equal(1, result.ListenersAfterReplacementMove);
         Assert.Equal(0, result.ListenersAfterDestroy);
+        fixture.AssertNoJsErrors();
+    }
+
+    [Theory]
+    [InlineData("null", "swiper-no-mousewheel", true)]
+    [InlineData("null", "ordinary", false)]
+    [InlineData("{ noMousewheelClass: 'no-wheel' }", "no-wheel", true)]
+    [InlineData("{ noMousewheelClass: 'no-wheel' }", "swiper-no-mousewheel", false)]
+    public async Task Wheel_OverASlideDescendantDuringAMove_LeavesTheMoveRunningOnlyWhereSwiperIgnoresIt(
+        string mousewheelOptions,
+        string descendantHolderClass,
+        bool isMoveLeftRunning)
+    {
+        // Arrange - the wheel is turned over an element inside a slide, which is light DOM slotted into the
+        // wrapper's shadow tree. Swiper ignores a wheel whose target sits inside an element with the
+        // no-mousewheel class (the module's `noMousewheelClass`, which a caller can change), and a wheel
+        // Swiper ignores is not the user taking the slider over.
+        await fixture.NavigateToStoryAsync(CssModeStory, CssModeState);
+
+        // Act
+        var result = await EvaluateAsync($$"""
+            const slider = await standaloneSlider({ cssMode: true, mousewheel: {{mousewheelOptions}}, spaceBetween: 16 });
+            const wrapper = slider.el.swiper.wrapperEl;
+            const holder = document.createElement('div');
+            holder.className = '{{descendantHolderClass}}';
+            const descendant = document.createElement('span');
+            holder.appendChild(descendant);
+            slider.el.swiper.slides[0].appendChild(holder);
+            const targetOffset = slider.el.swiper.slides[4].offsetLeft;
+            interop.slideTo(slider.el, 4, 1500);
+            await wait(200);
+            wheelOver(descendant);
+            const snapTypeMidMove = wrapper.style.scrollSnapType;
+            await wait(2200);
+            const result = JSON.stringify({
+                snapTypeMidMove,
+                hasReachedTarget: Math.abs(wrapper.scrollLeft - targetOffset) < 2
+            });
+            slider.stage.remove();
+            return result;
+            """);
+
+        // Assert - a move left running keeps snapping suspended and lands on its slide; a move handed back
+        // restores snapping at once and rests on another
+        Assert.Equal(isMoveLeftRunning ? "none" : string.Empty, result.SnapTypeMidMove);
+        Assert.Equal(isMoveLeftRunning, result.HasReachedTarget);
         fixture.AssertNoJsErrors();
     }
 
@@ -250,5 +310,10 @@ public sealed class SwiperCssModeMousewheelTests(DemoFixture fixture)
         bool IsWheelLeftToBrowser,
         int RealIndex,
         int? ListenersWhileLive,
-        int? ListenersAfterDestroy);
+        int? ListenersAfterRemoval,
+        int? ListenersAfterReinitialization,
+        int? ListenersAfterReplacementMove,
+        int? ListenersAfterDestroy,
+        string? SnapTypeMidMove,
+        bool? HasReachedTarget);
 }

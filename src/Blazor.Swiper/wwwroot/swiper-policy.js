@@ -72,6 +72,9 @@ function cleanOptionValue(value) {
  * without `enabled` means enabled. Only a caller who said nothing is defaulted: by now an explicit
  * `Mousewheel = false` is the literal `false` (see cleanOptionValue), which is not undefined and so
  * stands.
+ *
+ * Only the top-level `cssMode` is read. One that arrives through a breakpoint or through the element's
+ * own `css-mode` attribute is not defaulted, and the caller sets `mousewheel` explicitly there.
  */
 function withWrapperDefaults(options) {
     const withDefaults = { ...options };
@@ -314,6 +317,20 @@ export function isSwiperCorrection(speed, runCallbacks, isInternal) {
  */
 export function isSwiperTakingOver(hasMoved, isNavigationLocked) {
     return hasMoved || !isNavigationLocked;
+}
+
+/**
+ * Whether Swiper's mousewheel module would pay no attention to a wheel event over `target`.
+ *
+ * Swiper returns before doing anything with an event whose target sits inside an element carrying the
+ * module's `noMousewheelClass`, and the wrapper follows it: a wheel Swiper ignores is not the user taking
+ * the slider over. The test is Swiper's own - `closest` on the event's target, with the class dropped
+ * unescaped into a selector. `target` is the event's target as the wrapper's listener hears it: a slide's
+ * content is light DOM of the page, slotted into the shadow trees of the slide and the container, and an
+ * event is retargeted only on its way out of a shadow tree, so that is the element the wheel was turned over.
+ */
+export function isWheelIgnoredBySwiper(target, noMousewheelClass) {
+    return !!target.closest(`.${noMousewheelClass}`);
 }
 
 /**

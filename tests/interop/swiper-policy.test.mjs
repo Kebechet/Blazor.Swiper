@@ -14,6 +14,7 @@ import {
     scrollPositionAt,
     isSwiperCorrection,
     isSwiperTakingOver,
+    isWheelIgnoredBySwiper,
     isMoveTurnedDown,
     snapTypeToHandBack,
     isInitPhaseEvent,
@@ -318,6 +319,33 @@ test("IsSwiperTakingOver_NothingToMoveAndNothingLocked_IsTakingOver", () => {
 test("IsSwiperTakingOver_NothingMovedWhileLocked_IsNotTakingOver", () => {
     // Swiper may have turned the call down, and a call it turns down sends the slider nowhere.
     assert.equal(isSwiperTakingOver(false, true), false);
+});
+
+/** An element that matches the selectors it is built with, standing in for a DOM node in the wheel tests. */
+function elementInside(...matchingSelectors) {
+    return { closest: (selector) => matchingSelectors.includes(selector) ? {} : null };
+}
+
+test("IsWheelIgnoredBySwiper_TargetInsideTheDefaultNoMousewheelElement_IsIgnored", () => {
+    // Arrange - Swiper's mousewheel module returns before doing anything with such an event
+    const target = elementInside(".swiper-no-mousewheel");
+
+    // Act & Assert
+    assert.equal(isWheelIgnoredBySwiper(target, "swiper-no-mousewheel"), true);
+});
+
+test("IsWheelIgnoredBySwiper_TargetInsideNoSuchElement_IsNotIgnored", () => {
+    assert.equal(isWheelIgnoredBySwiper(elementInside(), "swiper-no-mousewheel"), false);
+});
+
+test("IsWheelIgnoredBySwiper_CustomNoMousewheelClass_IsTheOneThatCounts", () => {
+    // Arrange - `noMousewheelClass` replaces the default rather than adding to it, as it does for Swiper
+    const insideCustom = elementInside(".no-wheel");
+    const insideDefault = elementInside(".swiper-no-mousewheel");
+
+    // Act & Assert
+    assert.equal(isWheelIgnoredBySwiper(insideCustom, "no-wheel"), true);
+    assert.equal(isWheelIgnoredBySwiper(insideDefault, "no-wheel"), false);
 });
 
 const unlocked = { enabled: true, allowSlideNext: true, allowSlidePrev: true, isTransitionLocked: false };
